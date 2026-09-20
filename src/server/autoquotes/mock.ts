@@ -45,18 +45,27 @@ export const demoCatalogue: ServiceItem[] = [
     demonstration: true,
   },
   {
-    id: "logbook",
-    name: "Logbook",
-    description: "A demonstration logbook servicing option.",
-    category: "main",
-    demonstration: true,
-  },
-  {
     id: "ev-essentials",
     name: "EV Essentials Service",
     description: "A demonstration electric vehicle servicing option.",
     category: "main",
     evOnly: true,
+    demonstration: true,
+  },
+  {
+    id: "logbook",
+    name: "Logbook",
+    description:
+      "A demonstration option for manufacturer-scheduled servicing. Confirm the actual schedule and inclusions with the workshop.",
+    category: "main",
+    demonstration: true,
+  },
+  {
+    id: "vehicle-inspection",
+    name: "Vehicle Inspection",
+    description:
+      "A demonstration pre-purchase or end-of-warranty inspection option. This is not a general fault-diagnosis service.",
+    category: "main",
     demonstration: true,
   },
   {

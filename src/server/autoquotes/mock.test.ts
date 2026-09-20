@@ -26,6 +26,6 @@ describe("synthetic AutoQuotes adapter", () => {
     const items = await mockAutoQuotes.getCatalogue(demoVehicle);
     expect(
       catalogueResponseSchema.parse({ items, demonstration: true }).items,
-    ).toHaveLength(12);
+    ).toHaveLength(13);
   });
 });

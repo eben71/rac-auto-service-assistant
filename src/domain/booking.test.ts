@@ -70,6 +70,26 @@ describe("booking state and validation", () => {
       answerDemoAssistant(state, "I'm not sure", items, vehicle).kind,
     ).toBe("cannot-match");
   });
+  it("prioritises steering loss reported during clarification", () => {
+    const state = startDemoAssistant("I need an oil change");
+    expect(
+      answerDemoAssistant(state, "I lost steering control", items, vehicle)
+        .kind,
+    ).toBe("safety-escalation");
+    expect(startDemoAssistant("I can't steer").kind).toBe("safety-escalation");
+  });
+  it("recommends only a present routine-service fixture after clarification", () => {
+    const state = startDemoAssistant("I need an oil change");
+    expect(
+      answerDemoAssistant(state, "Routine servicing", items, vehicle),
+    ).toMatchObject({
+      kind: "recommendation",
+      serviceId: "essentials",
+    });
+    expect(
+      answerDemoAssistant(state, "Routine servicing", [], vehicle).kind,
+    ).toBe("cannot-match");
+  });
   it("does not invent a general inspection when the catalogue lacks one", () => {
     const state = startDemoAssistant("Rattle over bumps");
     expect(

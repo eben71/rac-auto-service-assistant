@@ -25,6 +25,7 @@ export interface BookingDraft {
   vehicle: Vehicle | null;
   mainServiceId: string | null;
   additionalServiceIds: string[];
+  workshopNotes: string[];
 }
 export type BookingStep =
   "begin" | "vehicle" | "services" | "additional" | "review";
@@ -34,7 +35,17 @@ export interface AssistantMessage {
 }
 export type AssistantState =
   | { kind: "idle" }
-  | { kind: "clarification"; messages: AssistantMessage[] }
-  | { kind: "recommendation"; messages: AssistantMessage[]; serviceId: string }
+  | {
+      kind: "clarification";
+      messages: AssistantMessage[];
+      intent?: "routine-service" | "symptom";
+    }
+  | {
+      kind: "recommendation";
+      messages: AssistantMessage[];
+      serviceId: string;
+      explanation?: string;
+      workshopNotes?: string;
+    }
   | { kind: "cannot-match"; messages: AssistantMessage[] }
   | { kind: "safety-escalation"; messages: AssistantMessage[] };

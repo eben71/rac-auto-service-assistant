@@ -5,6 +5,7 @@ export const initialDraft: BookingDraft = {
   vehicle: null,
   mainServiceId: null,
   additionalServiceIds: [],
+  workshopNotes: [],
 };
 export const stepOrder: BookingStep[] = [
   "begin",
