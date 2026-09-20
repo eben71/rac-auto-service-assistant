@@ -1,0 +1,18 @@
+# Dependencies and builds
+node_modules/
+.pnpm-store/
+.next/
+out/
+.npm-cache/
+coverage/
+*.tsbuildinfo
+*.log
+tmp/
+
+# Local configuration and secrets
+.env*
+!.env.example
+
+# Private ChatGPT data and derived data
+*.zip
+docs/reference/screenshots/
