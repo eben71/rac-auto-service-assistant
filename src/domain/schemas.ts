@@ -85,3 +85,25 @@ export const catalogueResponseSchema = z.object({
   items: z.array(serviceSchema),
   demonstration: z.boolean(),
 });
+export const assistantDecisionSchema = z.discriminatedUnion("kind", [
+  z.object({
+    kind: z.literal("clarification"),
+    question: z.string(),
+    answers: z.array(z.string()),
+    uncertainty: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal("recommendation"),
+    serviceIds: z.array(z.string()),
+    explanation: z.string(),
+    workshopNotes: z.string().optional(),
+    uncertainty: z.string().optional(),
+  }),
+  z.object({ kind: z.literal("cannot-match"), reason: z.string() }),
+  z.object({ kind: z.literal("safety-escalation"), message: z.string() }),
+  z.object({
+    kind: z.literal("tool-call-request"),
+    tool: z.enum(["vehicle", "catalogue"]),
+    input: z.unknown(),
+  }),
+]);

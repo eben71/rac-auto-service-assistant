@@ -57,6 +57,7 @@ export type AssistantState =
       kind: "clarification";
       messages: AssistantMessage[];
       intent?: "routine-service" | "symptom";
+      answers?: string[];
     }
   | {
       kind: "recommendation";
