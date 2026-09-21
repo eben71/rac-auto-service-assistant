@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { catalogueResponseSchema, vehicleSchema } from "@/domain/schemas";
-import { getAutoQuotesAdapter } from "@/server/autoquotes";
+import { getMockServiceAdapter } from "@/server/autoquotes";
 
 export async function POST(request: Request) {
   try {
@@ -13,7 +13,7 @@ export async function POST(request: Request) {
         { message: "Invalid vehicle." },
         { status: 400 },
       );
-    const items = await getAutoQuotesAdapter().getCatalogue(vehicle.data);
+    const items = await getMockServiceAdapter().getCatalogue(vehicle.data);
     return NextResponse.json(
       catalogueResponseSchema.parse({
         items,

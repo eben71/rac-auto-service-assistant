@@ -14,7 +14,18 @@ export interface Vehicle {
   vehicleId?: string;
   mid?: string;
   details?: string;
-  source?: "autoquotes-mock" | "illustrative-profile" | "synthetic-lookup";
+  source?:
+    | "autoquotes-live"
+    | "autoquotes-mock"
+    | "illustrative-profile"
+    | "synthetic-lookup";
+  customerDetails?: VehicleCustomerDetails;
+}
+export interface VehicleCustomerDetails {
+  year?: number;
+  colour?: string;
+  odometerKm?: number;
+  nickname?: string;
 }
 export interface ServiceItem {
   id: string;

@@ -232,29 +232,53 @@ export function VehicleSummary({
   vehicle,
   onChange,
   image,
+  compact = false,
+  children,
 }: {
   vehicle: Vehicle;
   onChange(): void;
   image?: VehicleImage | null;
+  compact?: boolean;
+  children?: ReactNode;
 }) {
+  const effectiveYear = vehicle.customerDetails?.year ?? vehicle.year;
   return (
-    <div className="vehicle-summary-block">
-      <h3>Your car details</h3>
+    <div className={`vehicle-summary-block ${compact ? "compact" : ""}`}>
+      <h3>{compact ? "Selected vehicle" : "Your car details"}</h3>
       <div className="vehicle-summary">
         <VehicleArtwork key={vehicle.id} vehicle={vehicle} image={image} />
         <strong>
           {vehicle.make.toUpperCase()} {vehicle.model.toUpperCase()}
         </strong>
         <span>
-          {vehicle.year ?? "Year not verified"}
+          {effectiveYear ?? "Year not provided"}
           {vehicle.registration ? ` · ${vehicle.registration}` : ""}
         </span>
+        {vehicle.details && <span>{vehicle.details}</span>}
+        {(vehicle.customerDetails?.nickname ||
+          vehicle.customerDetails?.colour ||
+          vehicle.customerDetails?.odometerKm !== undefined) && (
+          <span className="vehicle-extra-summary">
+            {[
+              vehicle.customerDetails.nickname,
+              vehicle.customerDetails.colour,
+              vehicle.customerDetails.odometerKm !== undefined
+                ? `${vehicle.customerDetails.odometerKm.toLocaleString()} km`
+                : undefined,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        )}
         <small>
           {vehicle.source === "illustrative-profile"
             ? "Illustrative profile vehicle · vehicle-specific eligibility and schedules unavailable"
-            : "Mock vehicle record · details beyond the fixture are unverified"}
+            : vehicle.source === "autoquotes-live"
+              ? "Vehicle supplied by AutoQuotes · customer additions are shown separately"
+              : "Mock vehicle record · details beyond the fixture are unverified"}
         </small>
       </div>
+      {children}
       <TextButton onClick={onChange}>Change car</TextButton>
     </div>
   );

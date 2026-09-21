@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { vehicleResponseSchema } from "@/domain/schemas";
-import { getAutoQuotesAdapter } from "@/server/autoquotes";
+import { getMockServiceAdapter } from "@/server/autoquotes";
 
 const requestSchema = z.object({
   make: z.string().trim().min(1).max(80),
@@ -17,7 +17,7 @@ export async function POST(request: Request) {
       );
     return NextResponse.json(
       vehicleResponseSchema.parse(
-        await getAutoQuotesAdapter().selectMakeModel(
+        await getMockServiceAdapter().selectMakeModel(
           parsed.data.make,
           parsed.data.model,
         ),
