@@ -20,7 +20,45 @@ afterEach(() => {
 function mockRoutes() {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: string) => {
+    vi.fn(async (input: string, init?: { body?: string }) => {
+      if (input === "/api/internal/assistant") {
+        const request = JSON.parse(init?.body ?? "{}") as {
+          messages?: { text: string }[];
+        };
+        const messages = request.messages ?? [];
+        const latest = messages.at(-1)?.text ?? "";
+        const body = /brak(?:e|es|ing).*(?:fail|cannot stop|failed)/i.test(
+          latest,
+        )
+          ? {
+              kind: "safety-escalation",
+              message:
+                "This may be unsafe. Do not continue driving. Arrange appropriate roadside assistance or recovery. This demo cannot assess the fault.",
+            }
+          : latest === "I'm not sure"
+            ? {
+                kind: "cannot-match",
+                reason: "No appropriate inspection item is available.",
+              }
+            : messages.length > 1 && /routine servicing/i.test(latest)
+              ? {
+                  kind: "recommendation",
+                  serviceIds: ["essentials"],
+                  explanation:
+                    "You asked about routine servicing. This item is listed as a routine option in the demonstration catalogue. Review it before adding; the workshop must confirm actual suitability and inclusions.",
+                  workshopNotes:
+                    "Customer asked about routine servicing. Confirm the appropriate package and actual inclusions.",
+                }
+              : {
+                  kind: "clarification",
+                  question:
+                    /oil change/i.test(latest)
+                      ? "Is this for routine servicing, or are you asking about a specific problem? This helps us navigate the demonstration catalogue; it is not a diagnosis."
+                      : "When do you notice it most? Your answer helps us find a suitable service category; this is not a diagnosis.",
+                  answers: ["Routine servicing", "A specific problem", "I'm not sure"],
+                };
+        return { ok: true, json: async () => body };
+      }
       const body =
         input === "/api/vehicles" || input === "/api/vehicles/make-model"
           ? { status: "found", vehicle: demoVehicle }
@@ -170,18 +208,22 @@ describe("booking journey", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Help me find a service" }),
     );
-    expect(
-      screen.getByText(
+    await waitFor(() =>
+      expect(
+        screen.getByText(
         "When do you notice it most? Your answer helps us find a suitable service category; this is not a diagnosis.",
-      ),
-    ).toBeTruthy();
+        ),
+      ).toBeTruthy(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Close conversation" }));
     expect(screen.queryByText("Choose an answer")).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Resume conversation" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "I'm not sure" }));
-    expect(screen.getByText("We couldn't match that safely")).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByText("We couldn't match that safely")).toBeTruthy(),
+    );
     fireEvent.click(
       screen.getByRole("button", {
         name: "Return to manual service selection",
@@ -195,10 +237,17 @@ describe("booking journey", () => {
   it("requires explicit confirmation for a catalogue-backed recommendation and carries notes to review", async () => {
     await reachServices();
     fireEvent.click(screen.getByRole("button", { name: "Routine service" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Routine servicing" }),
+      ).toBeTruthy(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Routine servicing" }));
-    expect(
-      screen.getByRole("button", { name: "Add to selection" }),
-    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add to selection" }),
+      ).toBeTruthy(),
+    );
     expect(
       screen.getByTestId("service-essentials").getAttribute("aria-pressed"),
     ).toBe("false");
@@ -221,7 +270,7 @@ describe("booking journey", () => {
     await reachServices();
     fireEvent.click(screen.getByTestId("service-essentials"));
     fireEvent.click(screen.getByRole("button", { name: "Braking safety" }));
-    expect(screen.getByText("Safety first")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("Safety first")).toBeTruthy());
     expect(
       screen
         .getByRole("button", { name: "Next: additional services" })

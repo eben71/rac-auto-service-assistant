@@ -12,7 +12,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The safe adapter default is `AUTOQUOTES_PROVIDER=mock`; the assistant is always a labelled deterministic demo until Foundry is implemented. If npm on this machine resolves to a missing roaming installation, use `node 'C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js'` in place of `npm` and add `--cache .npm-cache` to npm commands.
+Open `http://localhost:3000`. The safe adapter default is `AUTOQUOTES_PROVIDER=mock`; the service assistant uses the configured Foundry provider and reports an unavailable state when it cannot connect. If npm on this machine resolves to a missing roaming installation, use `node 'C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js'` in place of `npm` and add `--cache .npm-cache` to npm commands.
 
 ```powershell
 npm run format:check
@@ -30,15 +30,15 @@ npm run build
 4. Additional services: a selectable demonstration checklist; selections survive Back and Next navigation.
 5. Review: selected demonstration items and any captured workshop note. There is no price, appointment, quote calculation, account or booking submission. Remaining sidebar steps are out of prototype scope.
 
-The help panel accepts a vague symptom and asks a clarification question, including “I'm not sure” and a free-text follow-up. Since this catalogue has no verified general fault-inspection item, a rattle concern leads to a human-review / unable-to-match result. A specific request for routine servicing can suggest the existing demonstration Essentials Service fixture; the customer must explicitly add it. This may add a workshop note to the review. Serious brake or steering loss triggers advice to stop driving and seek roadside assistance or recovery, and pauses booking progression. This is a deterministic demo, not AI diagnosis or a live model response.
+The help panel accepts a vague symptom and asks a clarification question, including “I'm not sure” and a free-text follow-up. Since this catalogue has no verified general fault-inspection item, a rattle concern leads to a human-review / unable-to-match result. A specific request for routine servicing can suggest the existing demonstration Essentials Service fixture; the customer must explicitly add it. This may add a workshop note to the review. Serious brake or steering loss triggers advice to stop driving and seek roadside assistance or recovery, and pauses booking progression. Foundry handles service-navigation decisions, but the assistant is not a diagnostic system and recommendations remain constrained to the supplied catalogue.
 
 ## Architecture
 
-`src/domain` holds typed booking, vehicle, service and assistant models, trust-boundary schemas, navigation, catalogue validation and demo safety decisions. `src/components/booking-journey.tsx` owns the in-memory draft and navigation; `booking-ui.tsx` holds reusable presentation components; `service-assistant.tsx` owns the inline conversation surface. `src/app/api` exposes server routes. `src/server/autoquotes` selects mock or real adapters. `src/server/foundry.ts` defines the future AI boundary. No customer-facing provider control is exposed. No customer personal information is sent to the AI boundary.
+`src/domain` holds typed booking, vehicle, service and assistant models, trust-boundary schemas, navigation, catalogue validation and demo safety decisions. `src/components/booking-journey.tsx` owns the in-memory draft and navigation; `booking-ui.tsx` holds reusable presentation components; `service-assistant.tsx` owns the inline conversation surface. `src/app/api` exposes server routes. `src/server/autoquotes` selects mock or real adapters. `src/server/foundry.ts` calls the Foundry project Responses API with server-side configuration. No customer-facing provider control is exposed. No customer personal information is sent to the AI boundary.
 
 The mock adapter has synthetic vehicle and catalogue fixtures. The real AutoQuotes adapter deliberately fails with a clear unconfigured error; there is no silent mock fallback. External responses must be mapped into domain models and validated with Zod before React receives them. The server routes return generic unavailable messages on adapter errors.
 
-The Foundry provider defines future multi-turn input and structured decisions for clarification, recommendation, inability to match, safety escalation, workshop notes, uncertainty and application-owned tool-call requests. The internal `/api/internal/ai-connectivity` route returns `not-configured` and missing configuration names only. It does not call a model or return secrets. This endpoint must be protected or removed before any production exposure.
+The Foundry provider sends multi-turn input and structured decisions for clarification, recommendation, inability to match, safety escalation, workshop notes, uncertainty and application-owned tool-call requests. Recommendations are filtered against the supplied catalogue IDs before React receives them. The internal `/api/internal/ai-connectivity` route reports configuration status only and does not return secrets. The assistant route is an internal endpoint and must be protected before production exposure.
 
 ## Integration checklists
 
@@ -48,7 +48,7 @@ Place approved OpenAPI specifications and sanitized sample requests/responses in
 
 ### Microsoft Foundry
 
-Confirm the approved project/resource endpoint, deployment, supported API surface, authentication method and organisational permissions. Prefer RAC-approved Entra ID if supported by the actual resource. Configure only server-side values in `.env.local`. Implement the provider in `src/server/foundry.ts` after these are known, then add a protected connectivity test. Future application-owned tool calls should reach the AutoQuotes adapter through the server application layer. Before showing any model service suggestion, check its ID against the retrieved bookable catalogue and vehicle applicability. Safety escalation must take priority. Never pass first name, last name or email to the model.
+Configure `FOUNDRY_PROJECT_ENDPOINT`, `FOUNDRY_MODEL_DEPLOYMENT` and `FOUNDRY_API_KEY` only in `.env.local`. The provider uses the project endpoint's `/openai/v1/responses` route and sends the subscription key as the `api-key` header. Before showing any model service suggestion, check its ID against the retrieved bookable catalogue and vehicle applicability. Safety escalation must take priority. Never pass first name, last name or email to the model.
 
 ## Design mapping and assumptions
 
@@ -56,6 +56,6 @@ All five supplied images in `docs/reference/screenshots/` were inspected. The UI
 
 ## Next tasks
 
-Obtain approved logo/font assets for the final visual pass; obtain AutoQuotes OpenAPI and sanitized examples; confirm Foundry resource and auth details; implement real contract mapping and server-side recommendation validation; then test against approved non-production resources. Real integration, eligibility, pricing, booking and submission are not implemented.
+Obtain approved logo/font assets for the final visual pass; obtain AutoQuotes OpenAPI and sanitized examples; protect the internal assistant route; then test Foundry against the approved non-production resource. Real AutoQuotes eligibility, pricing, booking and submission are not implemented.
 
 For parallel hackathon work, a frontend engineer can continue in `src/components/` and `src/app/globals.css`, an AutoQuotes engineer can own `src/server/autoquotes/` and the API contract mapping, and a Foundry engineer can own `src/server/foundry.ts` and future server-side orchestration. Coordinate any shared `src/domain/` contract changes before wiring real providers.
