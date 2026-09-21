@@ -55,6 +55,27 @@ All values are server-only; do not use `NEXT_PUBLIC_`. The header name is delibe
 
 Only registration lookup can be live. Make/model lookup, main and additional service catalogues, and logbook schedules remain deterministic mocks. `AUTOQUOTES_SERVICE_PROVIDER` currently accepts only `mock`, which prevents a partial live configuration from changing those routes.
 
+### ASQ Auto Services Booking lookup
+
+The dedicated `POST /api/vehicles/lookup-by-rego` route accepts:
+
+```json
+{ "registrationNumber": "1GDU034" }
+```
+
+Configure its server-side implementation in `.env.local`:
+
+```dotenv
+NEXT_PUBLIC_ASQ_BASE_URL=https://api-sit.ractest.com.au
+NEXT_PUBLIC_ASQ_VEHICLE_ENDPOINT=asqvehicle/v1
+ASQ_API_KEY=<subscription key>
+ASQ_AUTH_SCOPE=<Microsoft Entra API scope>
+ASQ_MANAGED_IDENTITY_CLIENT_ID=<user-assigned managed identity client ID>
+NEXT_PUBLIC_CORRELATION_ID_HEADER=Correlation-ID
+```
+
+The server acquires a bearer token using Azure Managed Identity, adds the API key, correlation ID, `Source-System: NextJS-ASB`, and JSON accept headers, then calls `{base URL}/{vehicle endpoint}/GetVehicleByRego`. A 404 becomes a local not-found response. Other failures return a typed error and log only the safe error code, HTTP status, and correlation ID. Registration values, API keys, bearer tokens, VINs, and upstream response bodies are not logged. Despite the requested `NEXT_PUBLIC_` names for non-secret routing values, this module reads all configuration only in server modules; `ASQ_API_KEY` and identity configuration must never use that prefix.
+
 ## Architecture and data boundaries
 
 `src/domain` owns booking, vehicle, service, assistant models and schemas. `src/components/booking-journey.tsx` owns the in-memory booking and identity-transition resets. `src/server/autoquotes/vehicle-transport.ts` validates and normalizes the shared upstream vehicle contract; `mock.ts` and `real.ts` use that same boundary. `src/app/api` keeps credentials and upstream requests off the browser.

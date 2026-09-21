@@ -102,6 +102,7 @@ export function BookingJourney() {
   const [vehicleDetailErrors, setVehicleDetailErrors] = useState<
     Record<string, string>
   >({});
+  const [vehicleDetailsOpen, setVehicleDetailsOpen] = useState(false);
   const manualRef = useRef<HTMLHeadingElement>(null);
   const assistantNavigationRef = useRef(false);
   const sessionGeneration = useRef(0);
@@ -142,6 +143,7 @@ export function BookingJourney() {
     setServiceMode("assistant");
     setVehicleDetails({ year: "", colour: "", odometerKm: "", nickname: "" });
     setVehicleDetailErrors({});
+    setVehicleDetailsOpen(false);
     setShowSaved(savedVehiclesVisible);
     setRemovalCandidate(null);
     dismissGarageMessage();
@@ -226,21 +228,28 @@ export function BookingJourney() {
     resetActiveBooking(false);
     setStep("begin");
   }
-  async function manageVehicle(operation: "add" | "remove", vehicle: Vehicle) {
+  async function manageVehicle(
+    operation: "add" | "remove",
+    vehicle: Vehicle,
+    successMessage?: string,
+  ): Promise<boolean> {
     try {
       const data = await postJson("/api/my-vehicles", { operation, vehicle });
       setProfile((data as { profile: DeveloperProfile }).profile);
       notifyGarage(
-        operation === "add"
-          ? "Vehicle added to My vehicles."
-          : "Vehicle removed from My vehicles.",
+        successMessage ??
+          (operation === "add"
+            ? "Vehicle added to My vehicles."
+            : "Vehicle removed from My vehicles."),
       );
       if (operation === "remove") {
         removalDialogRef.current?.close();
         setRemovalCandidate(null);
       }
+      return true;
     } catch {
       notifyGarage("Could not update My vehicles. Please try again.");
+      return false;
     }
   }
   function selectVehicle(vehicle: Vehicle) {
@@ -263,9 +272,7 @@ export function BookingJourney() {
     setAssistant({ kind: "idle" });
     setServiceMode("assistant");
     setVehicleDetails({
-      year: vehicle.customerDetails?.year
-        ? String(vehicle.customerDetails.year)
-        : "",
+      year: String(vehicle.customerDetails?.year ?? vehicle.year ?? ""),
       colour: vehicle.customerDetails?.colour ?? "",
       odometerKm:
         vehicle.customerDetails?.odometerKm !== undefined
@@ -274,6 +281,7 @@ export function BookingJourney() {
       nickname: vehicle.customerDetails?.nickname ?? "",
     });
     setVehicleDetailErrors({});
+    setVehicleDetailsOpen(false);
     setCatalogue([]);
     setCatalogueStatus("loading");
     setLookupStatus("idle");
@@ -396,6 +404,7 @@ export function BookingJourney() {
     setVehicleCandidates([]);
     setVehicleDetails({ year: "", colour: "", odometerKm: "", nickname: "" });
     setVehicleDetailErrors({});
+    setVehicleDetailsOpen(false);
     setServiceMode("assistant");
     setShowSaved(!!profile);
   }
@@ -404,6 +413,7 @@ export function BookingJourney() {
     if (!draft.vehicle) return null;
     const parsed = vehicleDetailsInputSchema.safeParse(vehicleDetails);
     if (!parsed.success) {
+      setVehicleDetailsOpen(true);
       setVehicleDetailErrors(
         Object.fromEntries(
           parsed.error.issues.map((issue) => [
@@ -415,8 +425,12 @@ export function BookingJourney() {
       return null;
     }
     setVehicleDetailErrors({});
+    const enteredYear = parsed.data.year === "" ? undefined : parsed.data.year;
     const customerDetails = {
-      year: parsed.data.year === "" ? undefined : parsed.data.year,
+      year:
+        draft.vehicle.year !== undefined && enteredYear === draft.vehicle.year
+          ? undefined
+          : enteredYear,
       colour: parsed.data.colour || undefined,
       odometerKm:
         parsed.data.odometerKm === "" ? undefined : parsed.data.odometerKm,
@@ -432,13 +446,28 @@ export function BookingJourney() {
     if (vehicle) await manageVehicle("add", vehicle);
   }
 
-  async function continueWithVehicle() {
+  async function saveVehicleDetails() {
     const vehicle = vehicleWithCustomerDetails();
     if (!vehicle) return;
-    const alreadySaved = profile?.savedVehicles.some(
+    const alreadySaved = !!profile?.savedVehicles.some(
       (item) => item.id === vehicle.id,
     );
-    if (alreadySaved) await manageVehicle("add", vehicle);
+    if (alreadySaved) {
+      const saved = await manageVehicle(
+        "add",
+        vehicle,
+        "Vehicle details saved.",
+      );
+      if (!saved) return;
+    } else {
+      notifyGarage("Vehicle details saved for this booking.");
+    }
+    setVehicleDetailsOpen(false);
+  }
+
+  function continueWithVehicle() {
+    const vehicle = vehicleWithCustomerDetails();
+    if (!vehicle) return;
     setStep(nextStep(step));
   }
 
@@ -762,95 +791,117 @@ export function BookingJourney() {
                   image={vehicleImage}
                   onChange={changeVehicle}
                 >
-                  <div className="vehicle-detail-editor">
-                    <h4>Add vehicle details</h4>
-                    {draft.vehicle.year && (
-                      <p className="source-note">
-                        AutoQuotes supplied year:{" "}
-                        <strong>{draft.vehicle.year}</strong>. Enter a different
-                        year only to record a customer correction.
-                      </p>
+                  <div className="vehicle-details-accordion">
+                    <button
+                      id="vehicle-details-toggle"
+                      type="button"
+                      className="vehicle-detail-toggle"
+                      aria-expanded={vehicleDetailsOpen}
+                      aria-controls="vehicle-details-panel"
+                      onClick={() => {
+                        dismissGarageMessage();
+                        setVehicleDetailsOpen((current) => !current);
+                      }}
+                    >
+                      <span>Edit vehicle details</span>
+                      <span aria-hidden="true">
+                        {vehicleDetailsOpen ? "−" : "+"}
+                      </span>
+                    </button>
+                    {vehicleDetailsOpen && (
+                      <div
+                        id="vehicle-details-panel"
+                        className="vehicle-detail-editor"
+                        role="region"
+                        aria-labelledby="vehicle-details-toggle"
+                      >
+                        {draft.vehicle.year && (
+                          <p className="source-note">
+                            AutoQuotes supplied year:{" "}
+                            <strong>{draft.vehicle.year}</strong>. Change it
+                            only to record a customer correction; the AutoQuotes
+                            value will be retained.
+                          </p>
+                        )}
+                        <div className="vehicle-detail-grid">
+                          <TextField
+                            id="vehicle-year"
+                            label="Vehicle year"
+                            value={vehicleDetails.year}
+                            onChange={(year) =>
+                              setVehicleDetails((current) => ({
+                                ...current,
+                                year,
+                              }))
+                            }
+                            error={vehicleDetailErrors.year}
+                            placeholder="e.g. 2020"
+                          />
+                          <TextField
+                            id="vehicle-colour"
+                            label="Colour (optional)"
+                            value={vehicleDetails.colour}
+                            onChange={(colour) =>
+                              setVehicleDetails((current) => ({
+                                ...current,
+                                colour,
+                              }))
+                            }
+                            error={vehicleDetailErrors.colour}
+                            placeholder="e.g. Silver"
+                          />
+                          <TextField
+                            id="vehicle-odometer"
+                            label="Odometer in km (optional)"
+                            type="number"
+                            value={vehicleDetails.odometerKm}
+                            onChange={(odometerKm) =>
+                              setVehicleDetails((current) => ({
+                                ...current,
+                                odometerKm,
+                              }))
+                            }
+                            error={vehicleDetailErrors.odometerKm}
+                            placeholder="e.g. 85000"
+                          />
+                          <TextField
+                            id="vehicle-nickname"
+                            label="Nickname (optional)"
+                            value={vehicleDetails.nickname}
+                            onChange={(nickname) =>
+                              setVehicleDetails((current) => ({
+                                ...current,
+                                nickname,
+                              }))
+                            }
+                            error={vehicleDetailErrors.nickname}
+                            placeholder="e.g. Family car"
+                          />
+                        </div>
+                        {draft.vehicle.year &&
+                          vehicleDetails.year &&
+                          Number(vehicleDetails.year) !==
+                            draft.vehicle.year && (
+                            <p className="discrepancy-note">
+                              Customer year differs from the AutoQuotes year.
+                              Both values will be retained for review.
+                            </p>
+                          )}
+                        <TextButton
+                          className="vehicle-detail-save"
+                          onClick={saveVehicleDetails}
+                        >
+                          Save vehicle details
+                        </TextButton>
+                      </div>
                     )}
-                    <div className="vehicle-detail-grid">
-                      <TextField
-                        id="vehicle-year"
-                        label={
-                          draft.vehicle.year
-                            ? "Customer year correction (optional)"
-                            : "Vehicle year"
-                        }
-                        value={vehicleDetails.year}
-                        onChange={(year) =>
-                          setVehicleDetails((current) => ({ ...current, year }))
-                        }
-                        error={vehicleDetailErrors.year}
-                        placeholder={
-                          draft.vehicle.year
-                            ? String(draft.vehicle.year)
-                            : "e.g. 2020"
-                        }
-                      />
-                      <TextField
-                        id="vehicle-colour"
-                        label="Colour (optional)"
-                        value={vehicleDetails.colour}
-                        onChange={(colour) =>
-                          setVehicleDetails((current) => ({
-                            ...current,
-                            colour,
-                          }))
-                        }
-                        error={vehicleDetailErrors.colour}
-                        placeholder="e.g. Silver"
-                      />
-                      <TextField
-                        id="vehicle-odometer"
-                        label="Odometer in km (optional)"
-                        type="number"
-                        value={vehicleDetails.odometerKm}
-                        onChange={(odometerKm) =>
-                          setVehicleDetails((current) => ({
-                            ...current,
-                            odometerKm,
-                          }))
-                        }
-                        error={vehicleDetailErrors.odometerKm}
-                        placeholder="e.g. 85000"
-                      />
-                      <TextField
-                        id="vehicle-nickname"
-                        label="Nickname (optional)"
-                        value={vehicleDetails.nickname}
-                        onChange={(nickname) =>
-                          setVehicleDetails((current) => ({
-                            ...current,
-                            nickname,
-                          }))
-                        }
-                        error={vehicleDetailErrors.nickname}
-                        placeholder="e.g. Family car"
-                      />
-                    </div>
-                    {draft.vehicle.year &&
-                      vehicleDetails.year &&
-                      Number(vehicleDetails.year) !== draft.vehicle.year && (
-                        <p className="discrepancy-note">
-                          Customer year differs from the AutoQuotes year. Both
-                          values will be retained for review.
-                        </p>
-                      )}
                   </div>
                   <div className="vehicle-card-actions">
                     {profile &&
                       (activeVehicleSaved ? (
-                        <>
-                          <span className="saved-state">
-                            ✓ Saved to my vehicles
-                          </span>
-                          <TextButton onClick={saveActiveVehicle}>
-                            Update saved details
-                          </TextButton>
-                        </>
+                        <span className="saved-state">
+                          ✓ Saved to my vehicles
+                        </span>
                       ) : (
                         <TextButton
                           className="save-vehicle-action"
@@ -873,7 +924,6 @@ export function BookingJourney() {
                     <TextField
                       id="registration"
                       label="Registration"
-                      placeholder="Try 1GDU034"
                       value={registration}
                       onChange={setRegistration}
                     />
