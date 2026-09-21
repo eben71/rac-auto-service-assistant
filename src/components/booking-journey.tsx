@@ -32,6 +32,7 @@ import {
   ServiceCard,
   AdditionalServiceRow,
   AdditionalServicesCard,
+  Spinner,
 } from "./booking-ui";
 import { ServiceAssistant } from "./service-assistant";
 import type { DeveloperProfile } from "@/server/profiles";
@@ -918,9 +919,11 @@ export function BookingJourney() {
                     onClick={lookupVehicle}
                     disabled={lookupStatus === "loading"}
                   >
-                    {lookupStatus === "loading"
-                      ? "Looking up vehicle…"
-                      : "Find car"}
+                    {lookupStatus === "loading" ? (
+                      <Spinner label="Looking up vehicle" />
+                    ) : (
+                      "Find car"
+                    )}
                   </PrimaryButton>
                   <div role="status" aria-live="polite">
                     {lookupStatus === "not-found" && (
@@ -1023,7 +1026,8 @@ export function BookingJourney() {
             </button>
           </div>
           {catalogueStatus === "loading" && (
-            <p role="status" className="status-message">
+            <p role="status" className="status-message loading-message">
+              <Spinner label="Loading demonstration services" />
               Loading demonstration services…
             </p>
           )}
@@ -1081,7 +1085,10 @@ export function BookingJourney() {
                       this illustrative vehicle in demo mode.
                     </p>
                   ) : scheduleStatus === "loading" ? (
-                    <p role="status">Loading schedule options…</p>
+                    <p role="status" className="loading-message">
+                      <Spinner label="Loading schedule options" />
+                      Loading schedule options…
+                    </p>
                   ) : scheduleStatus === "error" ? (
                     <p role="alert">
                       Schedule options are unavailable. Please ask the workshop.

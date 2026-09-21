@@ -228,6 +228,20 @@ export function TextButton({
   );
 }
 
+export function Spinner({
+  label = "Loading",
+  size = "sm",
+}: {
+  label?: string;
+  size?: "sm" | "lg";
+}) {
+  return (
+    <span className={`spinner spinner-${size}`} role="status" aria-label={label}>
+      <span className="spinner-circle" aria-hidden="true" />
+    </span>
+  );
+}
+
 export function VehicleSummary({
   vehicle,
   onChange,
