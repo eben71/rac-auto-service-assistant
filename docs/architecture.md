@@ -30,7 +30,7 @@ The ASQ client:
 
 - requires the configured ASQ URL, endpoint, API key, Entra scope, managed-identity client ID, and correlation-header name;
 - accepts only HTTPS on the exact `api-sit.ractest.com.au` allowlist entry and rejects URL credentials;
-- acquires a bearer token with Azure Managed Identity;
+- acquires a bearer token with Azure Managed Identity, caches it per identity and scope, and refreshes it two minutes before expiry;
 - constructs the configured `GetVehicleByRego` endpoint and encoded query server-side;
 - checks HTTP status and validates the complete envelope and each vehicle result;
 - distinguishes empty results, ambiguous results, unavailable responses, and timeouts;

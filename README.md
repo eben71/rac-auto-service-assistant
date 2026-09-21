@@ -50,7 +50,7 @@ ASQ_MANAGED_IDENTITY_CLIENT_ID=<user-assigned managed identity client ID>
 NEXT_PUBLIC_CORRELATION_ID_HEADER=Correlation-ID
 ```
 
-The server acquires a bearer token using Azure Managed Identity, adds the API key, correlation ID, `Source-System: NextJS-ASB`, and JSON accept headers, then calls `{base URL}/{vehicle endpoint}/GetVehicleByRego`. A 404 becomes a local not-found response. Other failures return a typed error and log only the safe error code, HTTP status, and correlation ID. Registration values, API keys, bearer tokens, VINs, and upstream response bodies are not logged. Despite the requested `NEXT_PUBLIC_` names for non-secret routing values, this module reads all configuration only in server modules; `ASQ_API_KEY` and identity configuration must never use that prefix.
+The server acquires a bearer token using `ManagedIdentityCredential`, caches it in server memory by managed identity and scope, and refreshes it two minutes before expiry. Concurrent refreshes share one token request. Every ASQ request includes `Authorization: Bearer …`, `X-API-Key`, the configured correlation header, `Source-System: NextJS-ASB`, and the JSON accept header before calling `{base URL}/{vehicle endpoint}/GetVehicleByRego`. A 404 becomes a local not-found response. Other failures return a typed error and log only the safe error code, HTTP status, and correlation ID. Registration values, API keys, bearer tokens, VINs, and upstream response bodies are not logged. Despite the requested `NEXT_PUBLIC_` names for non-secret routing values, this module reads all configuration only in server modules; `ASQ_API_KEY` and identity configuration must never use that prefix.
 
 ## Architecture and data boundaries
 
