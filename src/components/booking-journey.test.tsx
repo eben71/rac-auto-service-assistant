@@ -31,7 +31,41 @@ afterEach(() => {
 function mockRoutes() {
   vi.stubGlobal(
     "fetch",
-    vi.fn(async (input: string) => {
+    vi.fn(async (input: string, init?: { body?: string }) => {
+      if (input === "/api/internal/assistant") {
+        const request = JSON.parse(init?.body ?? "{}") as {
+          messages?: { text: string }[];
+        };
+        const latest = request.messages?.at(-1)?.text ?? "";
+        const body = /brak(?:e|es|ing).*(?:fail|cannot stop|failed)/i.test(
+          latest,
+        )
+          ? {
+              kind: "safety-escalation",
+              message: "Safety first. Do not continue driving.",
+            }
+          : latest === "I'm not sure"
+            ? { kind: "cannot-match", reason: "No verified match." }
+            : /routine servicing/i.test(latest)
+              ? {
+                  kind: "recommendation",
+                  serviceIds: ["1"],
+                  explanation: "Routine servicing is available to review.",
+                  workshopNotes:
+                    "Customer asked about routine servicing. Confirm the appropriate package.",
+                }
+              : {
+                  kind: "clarification",
+                  question:
+                    "When do you notice it most? Your answer helps us find a suitable service category; this is not a diagnosis.",
+                  answers: [
+                    "Routine servicing",
+                    "A specific problem",
+                    "I'm not sure",
+                  ],
+                };
+        return { ok: true, json: async () => body };
+      }
       const body =
         input === "/api/demo-session"
           ? { profile: null }
@@ -306,18 +340,22 @@ describe("booking journey", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Help me find a service" }),
     );
-    expect(
-      screen.getByText(
-        "When do you notice it most? Your answer helps us find a suitable service category; this is not a diagnosis.",
-      ),
-    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "When do you notice it most? Your answer helps us find a suitable service category; this is not a diagnosis.",
+        ),
+      ).toBeTruthy(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Close conversation" }));
     expect(screen.queryByText("Choose an answer")).toBeNull();
     fireEvent.click(
       screen.getByRole("button", { name: "Resume conversation" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "I'm not sure" }));
-    expect(screen.getByText("We couldn't match that safely")).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByText("We couldn't match that safely")).toBeTruthy(),
+    );
     fireEvent.click(
       screen.getByRole("button", {
         name: "Return to manual service selection",
@@ -331,10 +369,17 @@ describe("booking journey", () => {
   it("requires explicit confirmation for a catalogue-backed recommendation and carries notes to review", async () => {
     await reachServices(false);
     fireEvent.click(screen.getByRole("button", { name: "Routine service" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Routine servicing" }),
+      ).toBeTruthy(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Routine servicing" }));
-    expect(
-      screen.getByRole("button", { name: "Add to selection" }),
-    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Add to selection" }),
+      ).toBeTruthy(),
+    );
     fireEvent.click(screen.getByRole("button", { name: "Add to selection" }));
     fireEvent.click(
       screen.getByRole("tab", { name: "Choose a service myself" }),
@@ -348,9 +393,11 @@ describe("booking journey", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Next: review selections" }),
     );
-    expect(
-      screen.getByText(/Customer asked about routine servicing/),
-    ).toBeTruthy();
+    await waitFor(() =>
+      expect(
+        screen.getByText(/Customer asked about routine servicing/),
+      ).toBeTruthy(),
+    );
   });
 
   it("pauses progression for serious braking symptoms", async () => {
@@ -360,7 +407,7 @@ describe("booking journey", () => {
       screen.getByRole("tab", { name: "Auto Services Assistant" }),
     );
     fireEvent.click(screen.getByRole("button", { name: "Braking safety" }));
-    expect(screen.getByText("Safety first")).toBeTruthy();
+    await waitFor(() => expect(screen.getByText("Safety first")).toBeTruthy());
     expect(
       screen
         .getByRole("button", { name: "Next: additional services" })
@@ -655,7 +702,9 @@ describe("booking journey", () => {
     fireEvent.click(
       screen.getByRole("tab", { name: "Auto Services Assistant" }),
     );
-    expect(screen.getByText("Choose an answer")).toBeTruthy();
+    await waitFor(() =>
+      expect(screen.getByText("Choose an answer")).toBeTruthy(),
+    );
     expect(screen.queryByTestId("service-1")).toBeNull();
     fireEvent.click(
       screen.getByRole("tab", { name: "Choose a service myself" }),

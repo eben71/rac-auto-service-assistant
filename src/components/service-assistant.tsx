@@ -52,7 +52,25 @@ export function ServiceAssistant({
         body: JSON.stringify({
           messages,
           vehicleId: vehicle?.id,
-          catalogueIds: catalogue.map((item) => item.id),
+          catalogue: catalogue.map(
+            ({
+              id,
+              name,
+              description,
+              category,
+              evOnly,
+              isActive,
+              availableOnline,
+            }) => ({
+              id,
+              name,
+              description,
+              category,
+              evOnly,
+              isActive,
+              availableOnline,
+            }),
+          ),
         }),
       });
       if (!response.ok) throw new Error("Assistant unavailable");
