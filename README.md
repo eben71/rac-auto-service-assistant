@@ -42,12 +42,12 @@ The booking journey uses the `POST /api/vehicles/lookup-by-rego` route, which ac
 Configure its server-side implementation in `.env.local`:
 
 ```dotenv
-NEXT_PUBLIC_ASQ_BASE_URL=https://api-sit.ractest.com.au
+NEXT_PUBLIC_ASQ_BASE_URL=https://api-uat.ractest.com.au
 NEXT_PUBLIC_ASQ_VEHICLE_ENDPOINT=asqvehicle/v1
 ASQ_API_KEY=<subscription key>
 ASQ_AUTH_SCOPE=<Microsoft Entra API scope>
 ASQ_MANAGED_IDENTITY_CLIENT_ID=<user-assigned managed identity client ID>
-NEXT_PUBLIC_CORRELATION_ID_HEADER=Correlation-ID
+NEXT_PUBLIC_CORRELATION_ID_HEADER=X-Correlation-ID
 ```
 
 The server acquires a bearer token using Azure Managed Identity, adds the API key, correlation ID, `Source-System: NextJS-ASB`, and JSON accept headers, then calls `{base URL}/{vehicle endpoint}/GetVehicleByRego`. A 404 becomes a local not-found response. Other failures return a typed error and log only the safe error code, HTTP status, and correlation ID. Registration values, API keys, bearer tokens, VINs, and upstream response bodies are not logged. Despite the requested `NEXT_PUBLIC_` names for non-secret routing values, this module reads all configuration only in server modules; `ASQ_API_KEY` and identity configuration must never use that prefix.

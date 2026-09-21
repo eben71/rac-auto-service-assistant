@@ -8,7 +8,7 @@ import {
 } from "@/server/autoquotes/vehicle-transport";
 import { getAsqAccessToken } from "./token";
 
-const ASQ_HOST_ALLOWLIST = new Set(["api-sit.ractest.com.au"]);
+const ASQ_HOST_ALLOWLIST = new Set(["api-uat.ractest.com.au"]);
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 export interface AsqVehicleDetails {
@@ -112,6 +112,20 @@ function getAsqConfiguration(): AsqConfiguration {
   };
 }
 
+function buildAsqRequestHeaders(
+  accessToken: string,
+  apiKey: string,
+  correlationIdHeader: string,
+  correlationId: string,
+): Record<string, string> {
+  return {
+    Authorization: `Bearer ${accessToken}`,
+    "x-apim-key": apiKey,
+    [correlationIdHeader]: correlationId,
+    Accept: "application/json",
+  };
+}
+
 function normalizeVehicle(
   vehicle: AutoQuotesVehicleDto,
   registrationNumber: string,
@@ -197,19 +211,17 @@ export async function getVehicleByRegistration(
     `${configuration.baseUrl.origin}/`,
   );
   url.searchParams.set("registrationNumber", registration.data.trim());
-  url.searchParams.set("correlationId", correlationId);
 
   let response: Response;
   try {
     response = await fetch(url, {
       method: "GET",
-      headers: {
-        Authorization: `Bearer ${accessToken}`,
-        "X-API-Key": configuration.apiKey,
-        [configuration.correlationIdHeader]: correlationId,
-        "Source-System": "NextJS-ASB",
-        Accept: "application/json",
-      },
+      headers: buildAsqRequestHeaders(
+        accessToken,
+        configuration.apiKey,
+        configuration.correlationIdHeader,
+        correlationId,
+      ),
       cache: "no-store",
       signal: AbortSignal.timeout(DEFAULT_TIMEOUT_MS),
     });

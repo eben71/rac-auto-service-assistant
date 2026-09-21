@@ -29,7 +29,7 @@ Changing vehicle clears all vehicle-specific service and assistant context but l
 The ASQ client:
 
 - requires the configured ASQ URL, endpoint, API key, Entra scope, managed-identity client ID, and correlation-header name;
-- accepts only HTTPS on the exact `api-sit.ractest.com.au` allowlist entry and rejects URL credentials;
+- accepts only HTTPS on the exact `api-uat.ractest.com.au` allowlist entry and rejects URL credentials;
 - acquires a bearer token with Azure Managed Identity;
 - constructs the configured `GetVehicleByRego` endpoint and encoded query server-side;
 - checks HTTP status and validates the complete envelope and each vehicle result;
