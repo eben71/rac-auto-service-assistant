@@ -2,11 +2,8 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { AssistantState, ServiceItem, Vehicle } from "@/domain/models";
+import { assistantDecisionSchema } from "@/domain/schemas";
 import { selectable } from "@/domain/booking";
-import {
-  answerDemoAssistant,
-  startDemoAssistant,
-} from "@/domain/assistant-demo";
 import { PrimaryButton, TextButton } from "./booking-ui";
 
 interface ServiceAssistantProps {
@@ -36,6 +33,7 @@ export function ServiceAssistant({
 }: ServiceAssistantProps) {
   const [description, setDescription] = useState("");
   const [followup, setFollowup] = useState("");
+  const [pending, setPending] = useState(false);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -45,24 +43,97 @@ export function ServiceAssistant({
     inputRef.current?.focus();
   }, [focusRequest]);
 
+  async function ask(messages: { role: "user" | "assistant"; text: string }[]) {
+    setPending(true);
+    try {
+      const response = await fetch("/api/internal/assistant", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages,
+          vehicleId: vehicle?.id,
+          catalogueIds: catalogue.map((item) => item.id),
+        }),
+      });
+      if (!response.ok) throw new Error("Assistant unavailable");
+      const decision = assistantDecisionSchema.parse(await response.json());
+      const nextMessages = [
+        ...messages,
+        ...(decision.kind === "clarification"
+          ? [{ role: "assistant" as const, text: decision.question }]
+          : decision.kind === "recommendation"
+            ? [{ role: "assistant" as const, text: decision.explanation }]
+            : decision.kind === "safety-escalation"
+              ? [{ role: "assistant" as const, text: decision.message }]
+              : []),
+      ];
+      if (decision.kind === "recommendation" && decision.serviceIds[0]) {
+        onStateChange({
+          kind: decision.kind,
+          serviceId: decision.serviceIds[0],
+          explanation: decision.explanation,
+          workshopNotes: decision.workshopNotes,
+          messages: nextMessages,
+        });
+      } else if (decision.kind === "clarification") {
+        onStateChange({
+          kind: decision.kind,
+          answers: decision.answers,
+          messages: nextMessages,
+        });
+      } else if (decision.kind === "safety-escalation") {
+        onStateChange({ kind: decision.kind, messages: nextMessages });
+      } else {
+        onStateChange({
+          kind: "cannot-match",
+          messages: [
+            ...nextMessages,
+            {
+              role: "assistant",
+              text: "We could not match this concern to a verified catalogue service.",
+            },
+          ],
+        });
+      }
+    } catch {
+      onStateChange({
+        kind: "cannot-match",
+        messages: [
+          ...messages,
+          {
+            role: "assistant",
+            text: "The service assistant is unavailable. Please choose a service manually.",
+          },
+        ],
+      });
+    } finally {
+      setPending(false);
+    }
+  }
+
   function start(text: string) {
     if (!text.trim()) return;
-    onStateChange(startDemoAssistant(text));
+    void ask([{ role: "user", text: text.trim() }]);
     setDescription("");
     setFollowup("");
     onExpandedChange(true);
   }
 
   function answer(text: string) {
-    if (!text.trim()) return;
-    onStateChange(answerDemoAssistant(state, text, catalogue, vehicle));
+    if (!text.trim() || state.kind === "idle") return;
+    void ask([
+      ...state.messages,
+      { role: "user", text: text.trim() },
+    ]);
     setFollowup("");
   }
 
   const options =
-    state.kind === "clarification" && state.intent === "routine-service"
-      ? ["Routine servicing", "A specific problem", "I'm not sure"]
-      : ["Mostly over bumps", "At low speed", "I'm not sure"];
+    state.kind === "clarification" && state.answers
+      ? state.answers
+      : state.kind === "clarification" && state.intent === "routine-service"
+        ? ["Routine servicing", "A specific problem", "I'm not sure"]
+        : ["Mostly over bumps", "At low speed", "I'm not sure"];
   const suggested =
     state.kind === "recommendation"
       ? catalogue.find(
@@ -99,7 +170,7 @@ export function ServiceAssistant({
         />
       </label>
       <div className="assistant-actions">
-        <PrimaryButton onClick={() => start(description)}>
+        <PrimaryButton onClick={() => start(description)} disabled={pending}>
           Help me find a service
         </PrimaryButton>
         {state.kind !== "idle" && !expanded && (
@@ -142,6 +213,7 @@ export function ServiceAssistant({
                     key={option}
                     className="choice"
                     onClick={() => answer(option)}
+                    disabled={pending}
                   >
                     {option}
                   </button>
@@ -159,7 +231,7 @@ export function ServiceAssistant({
               </label>
               <PrimaryButton
                 onClick={() => answer(followup)}
-                disabled={!followup.trim()}
+                disabled={!followup.trim() || pending}
               >
                 Continue
               </PrimaryButton>

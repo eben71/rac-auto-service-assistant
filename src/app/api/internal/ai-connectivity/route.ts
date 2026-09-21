@@ -1,16 +1,13 @@
 import { NextResponse } from "next/server";
-import { foundryReadiness } from "@/server/foundry";
+import { foundryProvider } from "@/server/foundry";
 
-// Non-customer-facing status only. No model call or secret values are returned.
 export async function GET() {
-  const { missing } = foundryReadiness();
+  const result = await foundryProvider.testConnectivity();
   return NextResponse.json(
     {
-      status: "not-configured",
-      missing,
-      message:
-        "Connectivity test is disabled until approved Foundry integration is implemented.",
+      status: result.ready ? "ready" : "unavailable",
+      message: result.message,
     },
-    { status: 503 },
+    { status: result.ready ? 200 : 503 },
   );
 }
