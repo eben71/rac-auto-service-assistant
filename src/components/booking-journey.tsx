@@ -12,6 +12,7 @@ import {
   initialDraft,
   nextStep,
   previousStep,
+  sameVehicleIdentity,
   selectable,
   selectServiceId,
 } from "@/domain/booking";
@@ -21,6 +22,7 @@ import {
   vehicleDetailsInputSchema,
   vehicleResponseSchema,
 } from "@/domain/schemas";
+import { parseBookingSession } from "@/domain/booking-session";
 import {
   BookingLayout,
   PageHeading,
@@ -45,9 +47,16 @@ async function postJson(path: string, payload: unknown): Promise<unknown> {
     body: JSON.stringify(payload),
   });
   const body: unknown = await response.json();
-  if (!response.ok) throw new Error("The service is unavailable.");
+  if (!response.ok) {
+    const message = (body as { message?: unknown })?.message;
+    throw new Error(
+      typeof message === "string" ? message : "The service is unavailable.",
+    );
+  }
   return body;
 }
+
+const bookingStorageKey = "rac-demo-active-booking-v1";
 
 export function BookingJourney() {
   const [step, setStep] = useState<BookingStep>("begin");
@@ -106,6 +115,8 @@ export function BookingJourney() {
   const manualRef = useRef<HTMLHeadingElement>(null);
   const assistantNavigationRef = useRef(false);
   const sessionGeneration = useRef(0);
+  const stepBeforeLogin = useRef<BookingStep>("begin");
+  const [bookingRestored, setBookingRestored] = useState(false);
 
   useEffect(() => () => window.clearTimeout(garageTimer.current), []);
   useEffect(() => {
@@ -149,13 +160,82 @@ export function BookingJourney() {
     dismissGarageMessage();
   }
 
+  function clearTemporaryLookup() {
+    setRegistration("");
+    setMake("");
+    setModel("");
+    setVehicleCandidates([]);
+    setLookupStatus("idle");
+    setLookupMessage("");
+  }
+
+  function openSignIn() {
+    stepBeforeLogin.current = step;
+    setLoginError("");
+    setLoginOpen(true);
+    setStep("begin");
+  }
+
   useEffect(() => {
+    const persisted = parseBookingSession(
+      window.sessionStorage.getItem(bookingStorageKey) ?? "",
+    );
+    queueMicrotask(() => {
+      if (persisted) {
+        setDraft(persisted.draft);
+        setStep(persisted.step);
+        setAssistant(persisted.assistant);
+        setServiceMode(persisted.serviceMode);
+        const vehicle = persisted.draft.vehicle;
+        if (vehicle) {
+          setShowSaved(false);
+          setVehicleDetails({
+            year: String(vehicle.customerDetails?.year ?? vehicle.year ?? ""),
+            colour: vehicle.customerDetails?.colour ?? "",
+            odometerKm:
+              vehicle.customerDetails?.odometerKm === undefined
+                ? ""
+                : String(vehicle.customerDetails.odometerKm),
+            nickname: vehicle.customerDetails?.nickname ?? "",
+          });
+          if (vehicle.registration?.startsWith("DEMO")) {
+            void postJson("/api/vehicles/lookup-by-rego", {
+              registrationNumber: vehicle.registration,
+            })
+              .then((value) => vehicleResponseSchema.parse(value))
+              .then((result) => {
+                if (result.status !== "found") return;
+                setDraft((current) =>
+                  current.vehicle &&
+                  sameVehicleIdentity(current.vehicle, result.vehicle)
+                    ? {
+                        ...current,
+                        vehicle: {
+                          ...result.vehicle,
+                          customerDetails: current.vehicle.customerDetails,
+                        },
+                      }
+                    : current,
+                );
+              })
+              .catch(() => {
+                // Keep the validated local draft; lookup remains an explicit action.
+              });
+          }
+        }
+      }
+      setBookingRestored(true);
+    });
     const generation = sessionGeneration.current;
     fetch("/api/demo-session")
       .then((response) => response.json())
       .then((data: { profile: DeveloperProfile | null }) => {
         if (generation === sessionGeneration.current) setProfile(data.profile);
-        if (generation === sessionGeneration.current && data.profile) {
+        if (
+          generation === sessionGeneration.current &&
+          data.profile &&
+          !persisted?.draft.vehicle
+        ) {
           setShowSaved(true);
           setStep("vehicle");
         }
@@ -163,6 +243,14 @@ export function BookingJourney() {
       })
       .catch(() => setSessionReady(true));
   }, []);
+
+  useEffect(() => {
+    if (!bookingRestored) return;
+    window.sessionStorage.setItem(
+      bookingStorageKey,
+      JSON.stringify({ version: 1, step, draft, assistant, serviceMode }),
+    );
+  }, [assistant, bookingRestored, draft, serviceMode, step]);
 
   useEffect(() => {
     if (!draft.vehicle) return;
@@ -211,13 +299,19 @@ export function BookingJourney() {
         email: loginEmail.trim(),
       });
       sessionGeneration.current++;
-      setProfile((data as { profile: DeveloperProfile }).profile);
+      const nextProfile = (data as { profile: DeveloperProfile }).profile;
+      setProfile(nextProfile);
       setPassword("");
       setLoginOpen(false);
-      resetActiveBooking(true);
+      clearTemporaryLookup();
+      setShowSaved(!draft.vehicle);
       setStep("vehicle");
-    } catch {
-      setLoginError("Unable to sign in with that email.");
+    } catch (error) {
+      setLoginError(
+        error instanceof Error
+          ? error.message
+          : "Unable to sign in with that email.",
+      );
     }
   }
   async function signOut() {
@@ -225,8 +319,9 @@ export function BookingJourney() {
     await fetch("/api/demo-session", { method: "DELETE" });
     setProfile(null);
     setLoginOpen(false);
-    resetActiveBooking(false);
-    setStep("begin");
+    clearTemporaryLookup();
+    setShowSaved(false);
+    setStep(draft.vehicle ? "vehicle" : "begin");
   }
   async function manageVehicle(
     operation: "add" | "remove",
@@ -257,20 +352,21 @@ export function BookingJourney() {
     setVehicleImage(null);
     setSchedules([]);
     setScheduleStatus("idle");
+    const sameVehicle =
+      !!draft.vehicle && sameVehicleIdentity(draft.vehicle, vehicle);
     setDraft((current) => ({
       ...current,
       vehicle,
-      mainServiceId:
-        current.vehicle?.id === vehicle.id ? current.mainServiceId : null,
-      additionalServiceIds:
-        current.vehicle?.id === vehicle.id ? current.additionalServiceIds : [],
-      workshopNotes:
-        current.vehicle?.id === vehicle.id ? current.workshopNotes : [],
-      serviceScheduleId:
-        current.vehicle?.id === vehicle.id ? current.serviceScheduleId : null,
+      mainServiceId: sameVehicle ? current.mainServiceId : null,
+      additionalServiceIds: sameVehicle ? current.additionalServiceIds : [],
+      workshopNotes: sameVehicle ? current.workshopNotes : [],
+      serviceScheduleId: sameVehicle ? current.serviceScheduleId : null,
     }));
-    setAssistant({ kind: "idle" });
-    setServiceMode("assistant");
+    if (!sameVehicle) {
+      setAssistant({ kind: "idle" });
+      setAssistantExpanded(false);
+      setServiceMode("assistant");
+    }
     setVehicleDetails({
       year: String(vehicle.customerDetails?.year ?? vehicle.year ?? ""),
       colour: vehicle.customerDetails?.colour ?? "",
@@ -315,6 +411,30 @@ export function BookingJourney() {
         if (!cancelled) {
           setCatalogue(data.items);
           setCatalogueStatus("ready");
+          setDraft((current) => {
+            const validMain = current.mainServiceId
+              ? data.items.some(
+                  (item) =>
+                    item.id === current.mainServiceId &&
+                    item.category === "main" &&
+                    selectable(item, current.vehicle),
+                )
+              : true;
+            return {
+              ...current,
+              mainServiceId: validMain ? current.mainServiceId : null,
+              additionalServiceIds: current.additionalServiceIds.filter((id) =>
+                data.items.some(
+                  (item) =>
+                    item.id === id &&
+                    item.category === "additional" &&
+                    selectable(item, current.vehicle),
+                ),
+              ),
+              workshopNotes: validMain ? current.workshopNotes : [],
+              serviceScheduleId: validMain ? current.serviceScheduleId : null,
+            };
+          });
         }
       })
       .catch(() => {
@@ -387,7 +507,7 @@ export function BookingJourney() {
     }
   }
 
-  function changeVehicle() {
+  function changeVehicle(showGarage = !!profile) {
     dismissGarageMessage();
     setVehicleImage(null);
     setSchedules([]);
@@ -410,7 +530,15 @@ export function BookingJourney() {
     setVehicleDetailErrors({});
     setVehicleDetailsOpen(false);
     setServiceMode("assistant");
-    setShowSaved(!!profile);
+    setShowSaved(showGarage);
+  }
+
+  function selectLookupMode(nextMode: "registration" | "make-model") {
+    if (nextMode === mode) return;
+    if (draft.vehicle) changeVehicle(false);
+    clearTemporaryLookup();
+    setShowSaved(false);
+    setMode(nextMode);
   }
 
   function vehicleWithCustomerDetails(): Vehicle | null {
@@ -453,8 +581,8 @@ export function BookingJourney() {
   async function saveVehicleDetails() {
     const vehicle = vehicleWithCustomerDetails();
     if (!vehicle) return;
-    const alreadySaved = !!profile?.savedVehicles.some(
-      (item) => item.id === vehicle.id,
+    const alreadySaved = !!profile?.savedVehicles.some((item) =>
+      sameVehicleIdentity(item, vehicle),
     );
     if (alreadySaved) {
       const saved = await manageVehicle(
@@ -574,31 +702,39 @@ export function BookingJourney() {
   const activeVehicleSaved = !!(
     profile &&
     draft.vehicle &&
-    profile.savedVehicles.some((vehicle) => vehicle.id === draft.vehicle?.id)
+    profile.savedVehicles.some((vehicle) =>
+      sameVehicleIdentity(vehicle, draft.vehicle as Vehicle),
+    )
   );
+  const rawPersonalName = (profile?.displayName || draft.customer.firstName)
+    .trim()
+    .split(/\s+/)[0];
+  const personalName = rawPersonalName
+    ? `${rawPersonalName[0].toUpperCase()}${rawPersonalName.slice(1).toLowerCase()}`
+    : "";
 
   return (
     <BookingLayout
       step={step}
       profileName={profile?.displayName}
-      onSignIn={() => {
-        setLoginOpen(true);
-        setStep("begin");
-      }}
+      onSignIn={openSignIn}
       onVehicles={() => {
         dismissGarageMessage();
         setShowSaved(true);
         setStep("vehicle");
       }}
       onSignOut={signOut}
+      onStartNewBooking={() => {
+        resetActiveBooking(!!profile);
+        setStep(profile ? "vehicle" : "begin");
+      }}
     >
       {step === "begin" && (
         <section aria-labelledby="begin-title">
           <div className="entry-actions">
             <TextButton
               onClick={() => {
-                setLoginOpen(true);
-                setLoginError("");
+                openSignIn();
               }}
             >
               Sign in
@@ -627,7 +763,12 @@ export function BookingJourney() {
               />
               <PrimaryButton onClick={signIn}>Sign in</PrimaryButton>
               <div className="back-row">
-                <TextButton onClick={() => setLoginOpen(false)}>
+                <TextButton
+                  onClick={() => {
+                    setLoginOpen(false);
+                    setStep(stepBeforeLogin.current);
+                  }}
+                >
                   Continue as guest
                 </TextButton>
               </div>
@@ -697,7 +838,15 @@ export function BookingJourney() {
             title={
               profile ? "Which vehicle are we servicing?" : "Vehicle details"
             }
-            question={profile ? undefined : "What do you drive?"}
+            question={
+              personalName
+                ? profile
+                  ? `Hi ${personalName}, which vehicle are we servicing?`
+                  : `Hi ${personalName}, what do you drive?`
+                : profile
+                  ? undefined
+                  : "What do you drive?"
+            }
             description="Tell us about your car so we can show demonstration service options. You can change it later."
           />
           {sessionReady && profile && showSaved && (
@@ -715,7 +864,7 @@ export function BookingJourney() {
                         {(vehicle.customerDetails?.year ?? vehicle.year)
                           ? `${vehicle.customerDetails?.year ?? vehicle.year} · `
                           : ""}
-                        {vehicle.registration ?? "Illustrative profile vehicle"}
+                        {vehicle.registration ?? "Synthetic demo vehicle"}
                       </p>
                       {vehicle.details && <p>{vehicle.details}</p>}
                       {vehicle.customerDetails && (
@@ -770,10 +919,7 @@ export function BookingJourney() {
                   role="tab"
                   aria-selected={mode === "registration"}
                   className={mode === "registration" ? "selected" : ""}
-                  onClick={() => {
-                    setMode("registration");
-                    setLookupStatus("idle");
-                  }}
+                  onClick={() => selectLookupMode("registration")}
                 >
                   By registration
                 </button>
@@ -781,10 +927,7 @@ export function BookingJourney() {
                   role="tab"
                   aria-selected={mode === "make-model"}
                   className={mode === "make-model" ? "selected" : ""}
-                  onClick={() => {
-                    setMode("make-model");
-                    setLookupStatus("idle");
-                  }}
+                  onClick={() => selectLookupMode("make-model")}
                 >
                   By make &amp; model
                 </button>
@@ -821,10 +964,9 @@ export function BookingJourney() {
                       >
                         {draft.vehicle.year && (
                           <p className="source-note">
-                            ASQ supplied year:{" "}
-                            <strong>{draft.vehicle.year}</strong>. Change it
-                            only to record a customer correction; the ASQ value
-                            will be retained.
+                            Fixture year: <strong>{draft.vehicle.year}</strong>.
+                            Change it only to record a customer correction; the
+                            fixture value will be retained.
                           </p>
                         )}
                         <div className="vehicle-detail-grid">
@@ -945,9 +1087,13 @@ export function BookingJourney() {
                           }}
                         >
                           <option value="">Select make</option>
+                          <option>BYD</option>
+                          <option>Ford</option>
+                          <option>Hyundai</option>
+                          <option>Mazda</option>
                           <option>Mitsubishi</option>
+                          <option>Tesla</option>
                           <option>Toyota</option>
-                          <option>Nissan</option>
                         </select>
                       </label>
                       <label className="field" htmlFor="model">
@@ -959,11 +1105,20 @@ export function BookingJourney() {
                           onChange={(event) => setModel(event.target.value)}
                         >
                           <option value="">Select model</option>
+                          {make === "BYD" && <option>Dolphin</option>}
+                          {make === "Ford" && <option>Ranger</option>}
+                          {make === "Hyundai" && <option>i30</option>}
+                          {make === "Mazda" && <option>CX-5</option>}
                           {make === "Mitsubishi" && (
                             <option>Pajero Sport</option>
                           )}
-                          {make === "Toyota" && <option>Corolla</option>}
-                          {make === "Nissan" && <option>Leaf</option>}
+                          {make === "Tesla" && <option>Model 3</option>}
+                          {make === "Toyota" && (
+                            <>
+                              <option>RAV4</option>
+                              <option>Camry</option>
+                            </>
+                          )}
                         </select>
                       </label>
                     </div>
@@ -1029,8 +1184,8 @@ export function BookingJourney() {
             </TextButton>
           </div>
           <p className="demo-footnote">
-            Registration lookup uses the server-side provider configured for
-            this environment. Make and model selection remains synthetic.
+            Registration lookup and make/model selection use deterministic,
+            synthetic demonstration data only. Try DEMO1 through DEMO9.
           </p>
         </section>
       )}
@@ -1040,7 +1195,7 @@ export function BookingJourney() {
           <PageHeading
             id="services-title"
             title="Service selection"
-            question={`What does your ${draft.vehicle?.make.toUpperCase() ?? "VEHICLE"} ${draft.vehicle?.model.toUpperCase() ?? ""} need?`}
+            question={`${personalName ? `${personalName}, what` : "What"} does your ${draft.vehicle?.make.toUpperCase() ?? "VEHICLE"} ${draft.vehicle?.model.toUpperCase() ?? ""} need?`}
             description="Use the Auto Services Assistant or choose a service yourself."
           />
           {draft.vehicle && (
@@ -1273,17 +1428,15 @@ export function BookingJourney() {
               {draft.vehicle?.customerDetails?.year ??
                 draft.vehicle?.year ??
                 "Year not provided"}{" "}
-              {draft.vehicle?.make} {draft.vehicle?.model} ·{" "}
-              {draft.vehicle?.source === "asq"
-                ? "ASQ lookup with customer additions"
-                : "Demonstration data"}
+              {draft.vehicle?.make} {draft.vehicle?.model} · Demonstration data
             </p>
             {draft.vehicle?.year &&
               draft.vehicle.customerDetails?.year &&
               draft.vehicle.year !== draft.vehicle.customerDetails.year && (
                 <p>
                   Customer supplied year {draft.vehicle.customerDetails.year};
-                  ASQ supplied {draft.vehicle.year}. Confirm with the workshop.
+                  fixture supplied {draft.vehicle.year}. Confirm with the
+                  workshop.
                 </p>
               )}
             {draft.vehicle?.customerDetails && (

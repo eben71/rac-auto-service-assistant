@@ -1,31 +1,44 @@
 import type { Vehicle } from "./models";
 
 // Verified against the published AllBrands v1 catalogue on 2026-09-21.
-// These are illustrative profiles, not AutoQuotes vehicles.
+// These are synthetic demo registry vehicles used only to seed a new profile.
+// Existing garages are never reseeded or overwritten.
 export const profileVehicles: readonly Vehicle[] = [
   {
-    id: "illustrative-toyota-rav4",
+    id: "DEMO3",
+    vehicleId: "DEMO3",
+    year: 2022,
     make: "Toyota",
     model: "RAV4",
-    fuel: "unknown",
+    fuel: "petrol-diesel",
+    energyType: "hybrid",
     demonstration: true,
-    source: "illustrative-profile",
+    source: "synthetic-lookup",
+    dataProvenance: { identity: "synthetic-demo", technical: "unavailable" },
   },
   {
-    id: "illustrative-toyota-camry",
+    id: "DEMO4",
+    vehicleId: "DEMO4",
+    year: 2021,
     make: "Toyota",
     model: "Camry",
-    fuel: "unknown",
+    fuel: "petrol-diesel",
+    energyType: "petrol",
     demonstration: true,
-    source: "illustrative-profile",
+    source: "synthetic-lookup",
+    dataProvenance: { identity: "synthetic-demo", technical: "unavailable" },
   },
   {
-    id: "illustrative-tesla-model-3",
+    id: "DEMO5",
+    vehicleId: "DEMO5",
+    year: 2023,
     make: "Tesla",
     model: "Model 3",
     fuel: "electric",
+    energyType: "electric",
     demonstration: true,
-    source: "illustrative-profile",
+    source: "synthetic-lookup",
+    dataProvenance: { identity: "synthetic-demo", technical: "unavailable" },
   },
 ];
 export const profileImageEntries = [
