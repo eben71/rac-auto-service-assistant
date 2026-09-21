@@ -1,28 +1,15 @@
 import type { AutoQuotesAdapter } from "./contracts";
 import type { ServiceItem, Vehicle } from "../../domain/models";
+import {
+  normalizeVehicle,
+  type AutoQuotesVehicleDto,
+} from "./vehicle-transport";
 
 export interface AutoQuotesResponse<T> {
   Result: T;
   IsSuccess: boolean;
   ErrorCode: string | null;
   ErrorMessage: string | null;
-}
-export interface AutoQuotesVehicleDto {
-  VehicleID: string;
-  Make: string;
-  Model: string;
-  Series: string;
-  Engine: string;
-  StartYear: string;
-  EndYear: string;
-  YearRange: string;
-  Year: string;
-  Details: string;
-  Chassis: string;
-  CountryOfOrigin: string;
-  VIN: string;
-  MID: string;
-  VehicleTypeText: string;
 }
 export interface AutoQuotesServiceDto {
   ServiceTypeId: number;
@@ -68,33 +55,12 @@ export const vehicleLookupDto: AutoQuotesResponse<AutoQuotesVehicleDto[]> = {
   ErrorCode: null,
   ErrorMessage: null,
 };
-export function normalizeVehicle(
-  dto: AutoQuotesVehicleDto,
-  registration?: string,
-): Vehicle {
-  const titleCase = (value: string) =>
-    value.toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
-  return {
-    id: dto.VehicleID,
-    vehicleId: dto.VehicleID,
-    mid: dto.MID,
-    year: Number(dto.Year),
-    make: titleCase(dto.Make),
-    model: titleCase(dto.Model),
-    registration,
-    fuel: /diesel|petrol/i.test(dto.VehicleTypeText)
-      ? "petrol-diesel"
-      : /electric/i.test(dto.VehicleTypeText)
-        ? "electric"
-        : "unknown",
-    details: dto.Details.trim(),
-    demonstration: true,
-    source: "autoquotes-mock",
-  };
-}
+export { normalizeVehicle } from "./vehicle-transport";
+export type { AutoQuotesVehicleDto } from "./vehicle-transport";
 export const demoVehicle = normalizeVehicle(
   vehicleLookupDto.Result[0],
   "1GDU034",
+  "autoquotes-mock",
 );
 export const demoVehicles: Vehicle[] = [
   demoVehicle,

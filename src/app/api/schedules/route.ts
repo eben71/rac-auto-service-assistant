@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
-import { getAutoQuotesAdapter } from "@/server/autoquotes";
+import { getMockServiceAdapter } from "@/server/autoquotes";
 
 export async function POST(request: Request) {
   const body: unknown = await request.json().catch(() => null);
@@ -12,7 +12,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ message: "Invalid MID." }, { status: 400 });
   try {
     return NextResponse.json({
-      schedules: await getAutoQuotesAdapter().getSchedules(mid.data),
+      schedules: await getMockServiceAdapter().getSchedules(mid.data),
     });
   } catch {
     return NextResponse.json(

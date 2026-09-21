@@ -18,6 +18,7 @@ import {
 import {
   customerSchema,
   catalogueResponseSchema,
+  vehicleDetailsInputSchema,
   vehicleResponseSchema,
 } from "@/domain/schemas";
 import {
@@ -58,6 +59,11 @@ export function BookingJourney() {
   const [loginError, setLoginError] = useState("");
   const [showSaved, setShowSaved] = useState(true);
   const [garageMessage, setGarageMessage] = useState("");
+  const garageTimer = useRef<number | undefined>(undefined);
+  const [removalCandidate, setRemovalCandidate] = useState<Vehicle | null>(
+    null,
+  );
+  const removalDialogRef = useRef<HTMLDialogElement>(null);
   const [vehicleImage, setVehicleImage] = useState<VehicleImage | null>(null);
   const [schedules, setSchedules] = useState<ServiceSchedule[]>([]);
   const [scheduleStatus, setScheduleStatus] = useState<
@@ -69,6 +75,8 @@ export function BookingJourney() {
     "registration",
   );
   const [registration, setRegistration] = useState("");
+  const [vehicleCandidates, setVehicleCandidates] = useState<Vehicle[]>([]);
+  const [lookupMessage, setLookupMessage] = useState("");
   const [make, setMake] = useState("");
   const [model, setModel] = useState("");
   const [lookupStatus, setLookupStatus] = useState<
@@ -82,9 +90,62 @@ export function BookingJourney() {
   const [assistant, setAssistant] = useState<AssistantState>({ kind: "idle" });
   const [assistantExpanded, setAssistantExpanded] = useState(false);
   const [assistantFocusRequest, setAssistantFocusRequest] = useState(0);
+  const [serviceMode, setServiceMode] = useState<"assistant" | "manual">(
+    "assistant",
+  );
+  const [vehicleDetails, setVehicleDetails] = useState({
+    year: "",
+    colour: "",
+    odometerKm: "",
+    nickname: "",
+  });
+  const [vehicleDetailErrors, setVehicleDetailErrors] = useState<
+    Record<string, string>
+  >({});
   const manualRef = useRef<HTMLHeadingElement>(null);
   const assistantNavigationRef = useRef(false);
   const sessionGeneration = useRef(0);
+
+  useEffect(() => () => window.clearTimeout(garageTimer.current), []);
+  useEffect(() => {
+    const dialog = removalDialogRef.current;
+    if (removalCandidate && dialog && !dialog.open) {
+      dialog.showModal();
+      dialog.querySelector<HTMLButtonElement>("[data-cancel]")?.focus();
+    }
+  }, [removalCandidate]);
+
+  function dismissGarageMessage() {
+    window.clearTimeout(garageTimer.current);
+    setGarageMessage("");
+  }
+  function notifyGarage(message: string) {
+    window.clearTimeout(garageTimer.current);
+    setGarageMessage(message);
+    garageTimer.current = window.setTimeout(() => setGarageMessage(""), 4000);
+  }
+  function resetActiveBooking(savedVehiclesVisible: boolean) {
+    setDraft(initialDraft);
+    setRegistration("");
+    setMake("");
+    setModel("");
+    setVehicleCandidates([]);
+    setLookupStatus("idle");
+    setLookupMessage("");
+    setVehicleImage(null);
+    setSchedules([]);
+    setScheduleStatus("idle");
+    setCatalogue([]);
+    setCatalogueStatus("idle");
+    setAssistant({ kind: "idle" });
+    setAssistantExpanded(false);
+    setServiceMode("assistant");
+    setVehicleDetails({ year: "", colour: "", odometerKm: "", nickname: "" });
+    setVehicleDetailErrors({});
+    setShowSaved(savedVehiclesVisible);
+    setRemovalCandidate(null);
+    dismissGarageMessage();
+  }
 
   useEffect(() => {
     const generation = sessionGeneration.current;
@@ -151,7 +212,7 @@ export function BookingJourney() {
       setProfile((data as { profile: DeveloperProfile }).profile);
       setPassword("");
       setLoginOpen(false);
-      setShowSaved(true);
+      resetActiveBooking(true);
       setStep("vehicle");
     } catch {
       setLoginError("Unable to sign in with that email.");
@@ -161,26 +222,29 @@ export function BookingJourney() {
     sessionGeneration.current++;
     await fetch("/api/demo-session", { method: "DELETE" });
     setProfile(null);
-    setShowSaved(false);
     setLoginOpen(false);
-    setGarageMessage("");
-    changeVehicle();
+    resetActiveBooking(false);
     setStep("begin");
   }
   async function manageVehicle(operation: "add" | "remove", vehicle: Vehicle) {
     try {
       const data = await postJson("/api/my-vehicles", { operation, vehicle });
       setProfile((data as { profile: DeveloperProfile }).profile);
-      setGarageMessage(
+      notifyGarage(
         operation === "add"
           ? "Vehicle added to My vehicles."
           : "Vehicle removed from My vehicles.",
       );
+      if (operation === "remove") {
+        removalDialogRef.current?.close();
+        setRemovalCandidate(null);
+      }
     } catch {
-      setGarageMessage("Could not update My vehicles. Please try again.");
+      notifyGarage("Could not update My vehicles. Please try again.");
     }
   }
   function selectVehicle(vehicle: Vehicle) {
+    dismissGarageMessage();
     setVehicleImage(null);
     setSchedules([]);
     setScheduleStatus("idle");
@@ -197,6 +261,19 @@ export function BookingJourney() {
         current.vehicle?.id === vehicle.id ? current.serviceScheduleId : null,
     }));
     setAssistant({ kind: "idle" });
+    setServiceMode("assistant");
+    setVehicleDetails({
+      year: vehicle.customerDetails?.year
+        ? String(vehicle.customerDetails.year)
+        : "",
+      colour: vehicle.customerDetails?.colour ?? "",
+      odometerKm:
+        vehicle.customerDetails?.odometerKm !== undefined
+          ? String(vehicle.customerDetails.odometerKm)
+          : "",
+      nickname: vehicle.customerDetails?.nickname ?? "",
+    });
+    setVehicleDetailErrors({});
     setCatalogue([]);
     setCatalogueStatus("loading");
     setLookupStatus("idle");
@@ -271,6 +348,9 @@ export function BookingJourney() {
   }
 
   async function lookupVehicle() {
+    dismissGarageMessage();
+    setVehicleCandidates([]);
+    setLookupMessage("");
     setLookupStatus("loading");
     try {
       const path =
@@ -280,14 +360,23 @@ export function BookingJourney() {
       const result = vehicleResponseSchema.parse(await postJson(path, payload));
       if (result.status === "found") {
         selectVehicle(result.vehicle);
-      } else
+      } else if (result.status === "multiple") {
+        setVehicleCandidates(result.vehicles);
+        setLookupStatus("idle");
+        setLookupMessage(
+          "More than one vehicle matched. Select the correct vehicle.",
+        );
+      } else {
         setLookupStatus(result.status === "not-found" ? "not-found" : "error");
+        setLookupMessage(result.status === "unavailable" ? result.message : "");
+      }
     } catch {
       setLookupStatus("error");
     }
   }
 
   function changeVehicle() {
+    dismissGarageMessage();
     setVehicleImage(null);
     setSchedules([]);
     setScheduleStatus("idle");
@@ -303,7 +392,54 @@ export function BookingJourney() {
     setCatalogue([]);
     setCatalogueStatus("idle");
     setLookupStatus("idle");
+    setLookupMessage("");
+    setVehicleCandidates([]);
+    setVehicleDetails({ year: "", colour: "", odometerKm: "", nickname: "" });
+    setVehicleDetailErrors({});
+    setServiceMode("assistant");
     setShowSaved(!!profile);
+  }
+
+  function vehicleWithCustomerDetails(): Vehicle | null {
+    if (!draft.vehicle) return null;
+    const parsed = vehicleDetailsInputSchema.safeParse(vehicleDetails);
+    if (!parsed.success) {
+      setVehicleDetailErrors(
+        Object.fromEntries(
+          parsed.error.issues.map((issue) => [
+            String(issue.path[0]),
+            issue.message,
+          ]),
+        ),
+      );
+      return null;
+    }
+    setVehicleDetailErrors({});
+    const customerDetails = {
+      year: parsed.data.year === "" ? undefined : parsed.data.year,
+      colour: parsed.data.colour || undefined,
+      odometerKm:
+        parsed.data.odometerKm === "" ? undefined : parsed.data.odometerKm,
+      nickname: parsed.data.nickname || undefined,
+    };
+    const vehicle = { ...draft.vehicle, customerDetails };
+    setDraft((current) => ({ ...current, vehicle }));
+    return vehicle;
+  }
+
+  async function saveActiveVehicle() {
+    const vehicle = vehicleWithCustomerDetails();
+    if (vehicle) await manageVehicle("add", vehicle);
+  }
+
+  async function continueWithVehicle() {
+    const vehicle = vehicleWithCustomerDetails();
+    if (!vehicle) return;
+    const alreadySaved = profile?.savedVehicles.some(
+      (item) => item.id === vehicle.id,
+    );
+    if (alreadySaved) await manageVehicle("add", vehicle);
+    setStep(nextStep(step));
   }
 
   function toggleMainService(id: string) {
@@ -368,13 +504,20 @@ export function BookingJourney() {
   function openAssistant() {
     assistantNavigationRef.current = true;
     setStep("services");
+    setServiceMode("assistant");
     setAssistantExpanded(true);
     setAssistantFocusRequest((current) => current + 1);
   }
 
   function focusManualSelection() {
-    manualRef.current?.scrollIntoView?.({ behavior: "smooth", block: "start" });
-    manualRef.current?.focus();
+    setServiceMode("manual");
+    window.requestAnimationFrame(() => {
+      manualRef.current?.scrollIntoView?.({
+        behavior: "smooth",
+        block: "start",
+      });
+      manualRef.current?.focus();
+    });
   }
 
   const mainServices = catalogue.filter(
@@ -395,6 +538,11 @@ export function BookingJourney() {
       draft.additionalServiceIds.includes(item.id),
   );
   const safetyHold = assistant.kind === "safety-escalation";
+  const activeVehicleSaved = !!(
+    profile &&
+    draft.vehicle &&
+    profile.savedVehicles.some((vehicle) => vehicle.id === draft.vehicle?.id)
+  );
 
   return (
     <BookingLayout
@@ -405,6 +553,7 @@ export function BookingJourney() {
         setStep("begin");
       }}
       onVehicles={() => {
+        dismissGarageMessage();
         setShowSaved(true);
         setStep("vehicle");
       }}
@@ -420,14 +569,6 @@ export function BookingJourney() {
               }}
             >
               Sign in
-            </TextButton>
-            <TextButton
-              onClick={() => {
-                setLoginOpen(false);
-                setShowSaved(false);
-              }}
-            >
-              Continue as guest
             </TextButton>
           </div>
           {loginOpen ? (
@@ -452,6 +593,11 @@ export function BookingJourney() {
                 onChange={setPassword}
               />
               <PrimaryButton onClick={signIn}>Sign in</PrimaryButton>
+              <div className="back-row">
+                <TextButton onClick={() => setLoginOpen(false)}>
+                  Continue as guest
+                </TextButton>
+              </div>
               {loginError && (
                 <p role="alert" className="field-error">
                   {loginError}
@@ -459,7 +605,7 @@ export function BookingJourney() {
               )}
               <p className="demo-footnote">
                 Any password is accepted in this demo. It is never stored or
-                sent. Use Continue as guest to book without a profile.
+                sent. Close sign in to continue automatically as a guest.
               </p>
             </>
           ) : (
@@ -533,15 +679,33 @@ export function BookingJourney() {
                         {vehicle.make} {vehicle.model}
                       </strong>
                       <p>
-                        {vehicle.year ? `${vehicle.year} · ` : ""}
+                        {(vehicle.customerDetails?.year ?? vehicle.year)
+                          ? `${vehicle.customerDetails?.year ?? vehicle.year} · `
+                          : ""}
                         {vehicle.registration ?? "Illustrative profile vehicle"}
                       </p>
                       {vehicle.details && <p>{vehicle.details}</p>}
+                      {vehicle.customerDetails && (
+                        <p>
+                          {[
+                            vehicle.customerDetails.nickname,
+                            vehicle.customerDetails.colour,
+                            vehicle.customerDetails.odometerKm !== undefined
+                              ? `${vehicle.customerDetails.odometerKm.toLocaleString()} km`
+                              : undefined,
+                          ]
+                            .filter(Boolean)
+                            .join(" · ")}
+                        </p>
+                      )}
                       <TextButton onClick={() => selectVehicle(vehicle)}>
                         Select this vehicle
                       </TextButton>
                       <TextButton
-                        onClick={() => manageVehicle("remove", vehicle)}
+                        onClick={() => {
+                          dismissGarageMessage();
+                          setRemovalCandidate(vehicle);
+                        }}
                       >
                         Remove
                       </TextButton>
@@ -597,7 +761,112 @@ export function BookingJourney() {
                   vehicle={draft.vehicle}
                   image={vehicleImage}
                   onChange={changeVehicle}
-                />
+                >
+                  <div className="vehicle-detail-editor">
+                    <h4>Add vehicle details</h4>
+                    {draft.vehicle.year && (
+                      <p className="source-note">
+                        AutoQuotes supplied year:{" "}
+                        <strong>{draft.vehicle.year}</strong>. Enter a different
+                        year only to record a customer correction.
+                      </p>
+                    )}
+                    <div className="vehicle-detail-grid">
+                      <TextField
+                        id="vehicle-year"
+                        label={
+                          draft.vehicle.year
+                            ? "Customer year correction (optional)"
+                            : "Vehicle year"
+                        }
+                        value={vehicleDetails.year}
+                        onChange={(year) =>
+                          setVehicleDetails((current) => ({ ...current, year }))
+                        }
+                        error={vehicleDetailErrors.year}
+                        placeholder={
+                          draft.vehicle.year
+                            ? String(draft.vehicle.year)
+                            : "e.g. 2020"
+                        }
+                      />
+                      <TextField
+                        id="vehicle-colour"
+                        label="Colour (optional)"
+                        value={vehicleDetails.colour}
+                        onChange={(colour) =>
+                          setVehicleDetails((current) => ({
+                            ...current,
+                            colour,
+                          }))
+                        }
+                        error={vehicleDetailErrors.colour}
+                        placeholder="e.g. Silver"
+                      />
+                      <TextField
+                        id="vehicle-odometer"
+                        label="Odometer in km (optional)"
+                        type="number"
+                        value={vehicleDetails.odometerKm}
+                        onChange={(odometerKm) =>
+                          setVehicleDetails((current) => ({
+                            ...current,
+                            odometerKm,
+                          }))
+                        }
+                        error={vehicleDetailErrors.odometerKm}
+                        placeholder="e.g. 85000"
+                      />
+                      <TextField
+                        id="vehicle-nickname"
+                        label="Nickname (optional)"
+                        value={vehicleDetails.nickname}
+                        onChange={(nickname) =>
+                          setVehicleDetails((current) => ({
+                            ...current,
+                            nickname,
+                          }))
+                        }
+                        error={vehicleDetailErrors.nickname}
+                        placeholder="e.g. Family car"
+                      />
+                    </div>
+                    {draft.vehicle.year &&
+                      vehicleDetails.year &&
+                      Number(vehicleDetails.year) !== draft.vehicle.year && (
+                        <p className="discrepancy-note">
+                          Customer year differs from the AutoQuotes year. Both
+                          values will be retained for review.
+                        </p>
+                      )}
+                  </div>
+                  <div className="vehicle-card-actions">
+                    {profile &&
+                      (activeVehicleSaved ? (
+                        <>
+                          <span className="saved-state">
+                            ✓ Saved to my vehicles
+                          </span>
+                          <TextButton onClick={saveActiveVehicle}>
+                            Update saved details
+                          </TextButton>
+                        </>
+                      ) : (
+                        <TextButton
+                          className="save-vehicle-action"
+                          onClick={saveActiveVehicle}
+                        >
+                          Add to my vehicles
+                        </TextButton>
+                      ))}
+                    <PrimaryButton
+                      aria-label="Continue with this vehicle"
+                      onClick={continueWithVehicle}
+                    >
+                      Continue with this vehicle
+                    </PrimaryButton>
+                  </div>
+                </VehicleSummary>
               ) : (
                 <div className="lookup-panel" role="tabpanel">
                   {mode === "registration" ? (
@@ -656,37 +925,42 @@ export function BookingJourney() {
                   <div role="status" aria-live="polite">
                     {lookupStatus === "not-found" && (
                       <p className="status-message">
-                        No demonstration vehicle found. Try 1GDU034 or use make
-                        and model.
+                        No vehicle was found for those details. Check them and
+                        try again, or use the other lookup method.
                       </p>
                     )}
                     {lookupStatus === "error" && (
                       <p className="field-error">
-                        Vehicle lookup is unavailable or the input is invalid.
-                        Please try again.
+                        {lookupMessage ||
+                          "Vehicle lookup is unavailable or the input is invalid. Please try again."}
                       </p>
                     )}
                   </div>
+                  {vehicleCandidates.length > 0 && (
+                    <div
+                      className="vehicle-candidates"
+                      aria-label="Matching vehicles"
+                    >
+                      <p>{lookupMessage}</p>
+                      {vehicleCandidates.map((vehicle) => (
+                        <button
+                          type="button"
+                          key={vehicle.id}
+                          className="candidate-card"
+                          onClick={() => selectVehicle(vehicle)}
+                        >
+                          <strong>
+                            {vehicle.year ?? "Year unavailable"} {vehicle.make}{" "}
+                            {vehicle.model}
+                          </strong>
+                          <span>
+                            {vehicle.details || "Details unavailable"}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )}
                 </div>
-              )}
-              {profile &&
-                draft.vehicle &&
-                !profile.savedVehicles.some(
-                  (vehicle) => vehicle.id === draft.vehicle?.id,
-                ) && (
-                  <TextButton
-                    onClick={() => manageVehicle("add", draft.vehicle!)}
-                  >
-                    Add to my vehicles
-                  </TextButton>
-                )}
-              {draft.vehicle && (
-                <PrimaryButton
-                  aria-label="Next: select service"
-                  onClick={() => setStep(nextStep(step))}
-                >
-                  Next
-                </PrimaryButton>
               )}
             </>
           )}
@@ -701,8 +975,8 @@ export function BookingJourney() {
             </TextButton>
           </div>
           <p className="demo-footnote">
-            Synthetic lookup only. 1GDU034 returns a 2016 Mitsubishi Pajero
-            Sport; this is not a production vehicle search.
+            Registration lookup uses the server-side provider configured for
+            this environment. Make and model selection remains synthetic.
           </p>
         </section>
       )}
@@ -713,23 +987,41 @@ export function BookingJourney() {
             id="services-title"
             title="Service selection"
             question={`What does your ${draft.vehicle?.make.toUpperCase() ?? "VEHICLE"} ${draft.vehicle?.model.toUpperCase() ?? ""} need?`}
-            description="Select a main service package, explore additional services, or ask for help below."
+            description="Use the Auto Services Assistant or choose a service yourself."
           />
-          <ServiceAssistant
-            state={assistant}
-            onStateChange={setAssistant}
-            catalogue={catalogue}
-            vehicle={draft.vehicle}
-            selectedMainId={draft.mainServiceId}
-            onAddRecommendation={addRecommendation}
-            onManualSelection={focusManualSelection}
-            focusRequest={assistantFocusRequest}
-            expanded={assistantExpanded}
-            onExpandedChange={setAssistantExpanded}
-          />
-          <h2 className="manual-heading" ref={manualRef} tabIndex={-1}>
-            Select a service manually
-          </h2>
+          {draft.vehicle && (
+            <VehicleSummary
+              compact
+              vehicle={draft.vehicle}
+              image={vehicleImage}
+              onChange={() => {
+                changeVehicle();
+                setStep("vehicle");
+              }}
+            />
+          )}
+          <div
+            className="service-mode-tabs"
+            role="tablist"
+            aria-label="Service selection mode"
+          >
+            <button
+              role="tab"
+              aria-selected={serviceMode === "assistant"}
+              className={serviceMode === "assistant" ? "selected" : ""}
+              onClick={() => setServiceMode("assistant")}
+            >
+              Auto Services Assistant
+            </button>
+            <button
+              role="tab"
+              aria-selected={serviceMode === "manual"}
+              className={serviceMode === "manual" ? "selected" : ""}
+              onClick={() => setServiceMode("manual")}
+            >
+              Choose a service myself
+            </button>
+          </div>
           {catalogueStatus === "loading" && (
             <p role="status" className="status-message">
               Loading demonstration services…
@@ -748,77 +1040,100 @@ export function BookingJourney() {
               </TextButton>
             </div>
           )}
-          <div className="service-list">
-            {mainServices.map((item) => (
-              <ServiceCard
-                key={item.id}
-                item={item}
-                selected={draft.mainServiceId === item.id}
-                disabled={!selectable(item, draft.vehicle)}
-                onSelect={() => toggleMainService(item.id)}
+          {serviceMode === "assistant" && catalogueStatus !== "error" && (
+            <div role="tabpanel" aria-label="Auto Services Assistant">
+              <ServiceAssistant
+                state={assistant}
+                onStateChange={setAssistant}
+                catalogue={catalogue}
+                vehicle={draft.vehicle}
+                selectedMainId={draft.mainServiceId}
+                onAddRecommendation={addRecommendation}
+                onManualSelection={focusManualSelection}
+                focusRequest={assistantFocusRequest}
+                expanded={assistantExpanded}
+                onExpandedChange={setAssistantExpanded}
               />
-            ))}
-          </div>
-          {draft.mainServiceId === "9" && (
-            <div className="schedule-panel">
-              <h2 className="section-label">Logbook schedule</h2>
-              {!draft.vehicle?.mid ? (
-                <p>
-                  Vehicle-specific logbook schedules are unavailable for this
-                  illustrative vehicle in demo mode.
-                </p>
-              ) : scheduleStatus === "loading" ? (
-                <p role="status">Loading schedule options…</p>
-              ) : scheduleStatus === "error" ? (
-                <p role="alert">
-                  Schedule options are unavailable. Please ask the workshop.
-                </p>
-              ) : schedules.length ? (
-                <label className="field" htmlFor="schedule">
-                  <span>Choose a schedule option</span>
-                  <select
-                    className="input"
-                    id="schedule"
-                    value={draft.serviceScheduleId ?? ""}
-                    onChange={(event) =>
-                      setDraft((current) => ({
-                        ...current,
-                        serviceScheduleId: event.target.value || null,
-                      }))
-                    }
-                  >
-                    <option value="">Select a schedule</option>
-                    {schedules.map((option) => (
-                      <option key={option.id} value={option.id}>
-                        {option.description}
-                      </option>
-                    ))}
-                  </select>
-                  <small>
-                    These are supplied mock options. Confirm the correct
-                    schedule with the workshop.
-                  </small>
-                </label>
-              ) : (
-                <p>No schedule options are available.</p>
-              )}
             </div>
           )}
-          {catalogueStatus === "ready" && (
-            <>
-              <div className="or-divider">
-                <span>OR</span>
+          {serviceMode === "manual" && (
+            <div role="tabpanel" aria-label="Choose a service myself">
+              <h2 className="manual-heading" ref={manualRef} tabIndex={-1}>
+                Choose a service myself
+              </h2>
+              <div className="service-list">
+                {mainServices.map((item) => (
+                  <ServiceCard
+                    key={item.id}
+                    item={item}
+                    selected={draft.mainServiceId === item.id}
+                    disabled={!selectable(item, draft.vehicle)}
+                    onSelect={() => toggleMainService(item.id)}
+                  />
+                ))}
               </div>
-              <AdditionalServicesCard
-                disabled={safetyHold}
-                onSelect={() => setStep("additional")}
-              />
-            </>
+              {draft.mainServiceId === "9" && (
+                <div className="schedule-panel">
+                  <h2 className="section-label">Logbook schedule</h2>
+                  {!draft.vehicle?.mid ? (
+                    <p>
+                      Vehicle-specific logbook schedules are unavailable for
+                      this illustrative vehicle in demo mode.
+                    </p>
+                  ) : scheduleStatus === "loading" ? (
+                    <p role="status">Loading schedule options…</p>
+                  ) : scheduleStatus === "error" ? (
+                    <p role="alert">
+                      Schedule options are unavailable. Please ask the workshop.
+                    </p>
+                  ) : schedules.length ? (
+                    <label className="field" htmlFor="schedule">
+                      <span>Choose a schedule option</span>
+                      <select
+                        className="input"
+                        id="schedule"
+                        value={draft.serviceScheduleId ?? ""}
+                        onChange={(event) =>
+                          setDraft((current) => ({
+                            ...current,
+                            serviceScheduleId: event.target.value || null,
+                          }))
+                        }
+                      >
+                        <option value="">Select a schedule</option>
+                        {schedules.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.description}
+                          </option>
+                        ))}
+                      </select>
+                      <small>
+                        These are supplied mock options. Confirm the correct
+                        schedule with the workshop.
+                      </small>
+                    </label>
+                  ) : (
+                    <p>No schedule options are available.</p>
+                  )}
+                </div>
+              )}
+              {catalogueStatus === "ready" && (
+                <>
+                  <div className="or-divider">
+                    <span>OR</span>
+                  </div>
+                  <AdditionalServicesCard
+                    disabled={safetyHold}
+                    onSelect={() => setStep("additional")}
+                  />
+                </>
+              )}
+              <p className="demo-footnote">
+                These are synthetic catalogue fixtures. Vehicle-specific
+                applicability, inclusions and pricing await AutoQuotes records.
+              </p>
+            </div>
           )}
-          <p className="demo-footnote">
-            These are synthetic catalogue fixtures. Vehicle-specific
-            applicability, inclusions and pricing await AutoQuotes records.
-          </p>
           {safetyHold && (
             <p className="safety-hold" role="alert">
               Booking progression is paused while this safety concern is active.
@@ -900,9 +1215,36 @@ export function BookingJourney() {
           <div className="review-block">
             <h2>Vehicle</h2>
             <p>
-              {draft.vehicle?.year} {draft.vehicle?.make} {draft.vehicle?.model}{" "}
-              · Synthetic demonstration data
+              {draft.vehicle?.customerDetails?.year ??
+                draft.vehicle?.year ??
+                "Year not provided"}{" "}
+              {draft.vehicle?.make} {draft.vehicle?.model} ·{" "}
+              {draft.vehicle?.source === "autoquotes-live"
+                ? "AutoQuotes lookup with customer additions"
+                : "Demonstration data"}
             </p>
+            {draft.vehicle?.year &&
+              draft.vehicle.customerDetails?.year &&
+              draft.vehicle.year !== draft.vehicle.customerDetails.year && (
+                <p>
+                  Customer supplied year {draft.vehicle.customerDetails.year};
+                  AutoQuotes supplied {draft.vehicle.year}. Confirm with the
+                  workshop.
+                </p>
+              )}
+            {draft.vehicle?.customerDetails && (
+              <p>
+                {[
+                  draft.vehicle.customerDetails.nickname,
+                  draft.vehicle.customerDetails.colour,
+                  draft.vehicle.customerDetails.odometerKm !== undefined
+                    ? `${draft.vehicle.customerDetails.odometerKm.toLocaleString()} km`
+                    : undefined,
+                ]
+                  .filter(Boolean)
+                  .join(" · ")}
+              </p>
+            )}
           </div>
           <div className="review-block">
             <h2>Selected demonstration services</h2>
@@ -948,6 +1290,43 @@ export function BookingJourney() {
           </div>
         </section>
       )}
+      <dialog
+        ref={removalDialogRef}
+        className="confirmation-dialog"
+        aria-labelledby="remove-vehicle-title"
+        onCancel={(event) => {
+          event.preventDefault();
+          event.currentTarget.close();
+          setRemovalCandidate(null);
+        }}
+        onClose={() => setRemovalCandidate(null)}
+      >
+        <h2 id="remove-vehicle-title">Remove vehicle?</h2>
+        <p>
+          {removalCandidate
+            ? `${removalCandidate.customerDetails?.year ?? removalCandidate.year ?? "Year not provided"} ${removalCandidate.make} ${removalCandidate.model}`
+            : "This vehicle"}{" "}
+          will be removed from My vehicles.
+        </p>
+        <div className="dialog-actions">
+          <TextButton
+            data-cancel
+            onClick={() => {
+              removalDialogRef.current?.close();
+              setRemovalCandidate(null);
+            }}
+          >
+            Cancel
+          </TextButton>
+          <PrimaryButton
+            onClick={() =>
+              removalCandidate && manageVehicle("remove", removalCandidate)
+            }
+          >
+            Remove vehicle
+          </PrimaryButton>
+        </div>
+      </dialog>
     </BookingLayout>
   );
 }

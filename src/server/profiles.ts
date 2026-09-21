@@ -107,7 +107,7 @@ export async function updateGarage(
   data.garages[profile.id] =
     operation === "add"
       ? existing
-        ? vehicles
+        ? vehicles.map((item) => (key(item) === key(vehicle) ? vehicle : item))
         : [...vehicles, vehicle]
       : vehicles.filter((item) => key(item) !== key(vehicle));
   await save(data);

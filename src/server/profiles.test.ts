@@ -49,8 +49,26 @@ describe("local demo profiles", () => {
     const first = (await signIn("person1.demo@rac.com.au"))!;
     const second = (await signIn("person2.demo@rac.com.au"))!;
     await updateGarage(first, "add", demoVehicle);
-    await updateGarage(first, "add", demoVehicle);
+    await updateGarage(first, "add", {
+      ...demoVehicle,
+      customerDetails: {
+        year: 2017,
+        colour: "Blue",
+        odometerKm: 85000,
+        nickname: "Family car",
+      },
+    });
     expect((await profileForToken(first))?.savedVehicles).toHaveLength(2);
+    expect(
+      (await profileForToken(first))?.savedVehicles.find(
+        (vehicle) => vehicle.id === demoVehicle.id,
+      )?.customerDetails,
+    ).toEqual({
+      year: 2017,
+      colour: "Blue",
+      odometerKm: 85000,
+      nickname: "Family car",
+    });
     expect((await profileForToken(second))?.savedVehicles).toHaveLength(1);
     const refreshed = (await signIn("person1.demo@rac.com.au"))!;
     expect((await profileForToken(refreshed))?.savedVehicles).toHaveLength(2);

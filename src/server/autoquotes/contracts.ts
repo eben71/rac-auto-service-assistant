@@ -2,6 +2,7 @@ import type { ServiceItem, Vehicle } from "../../domain/models";
 import type { ServiceSchedule } from "./mock";
 export type VehicleLookupResult =
   | { status: "found"; vehicle: Vehicle }
+  | { status: "multiple"; vehicles: Vehicle[] }
   | { status: "not-found" }
   | { status: "unavailable"; message: string };
 export interface AutoQuotesAdapter {
