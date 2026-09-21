@@ -12,7 +12,9 @@ const ASQ_HOST_ALLOWLIST = new Set(["api-sit.ractest.com.au"]);
 const DEFAULT_TIMEOUT_MS = 10_000;
 
 export interface AsqVehicleDetails {
+  id: string;
   vehicleId: string;
+  registration: string;
   registrationNumber: string;
   make: string;
   model: string;
@@ -28,6 +30,9 @@ export interface AsqVehicleDetails {
   vin: string;
   mid: string;
   vehicleType: string;
+  fuel: "petrol-diesel" | "electric" | "unknown";
+  demonstration: false;
+  source: "asq";
 }
 
 export type AsqVehicleLookupErrorCode =
@@ -112,23 +117,35 @@ function normalizeVehicle(
   registrationNumber: string,
 ): AsqVehicleDetails {
   const year = Number(vehicle.Year);
+  const titleCase = (value: string) =>
+    value.toLowerCase().replace(/\b\w/g, (letter) => letter.toUpperCase());
   return {
+    id: vehicle.VehicleID,
     vehicleId: vehicle.VehicleID,
+    registration: registrationNumber,
     registrationNumber,
-    make: vehicle.Make,
-    model: vehicle.Model,
+    make: titleCase(vehicle.Make),
+    model: titleCase(vehicle.Model),
     series: vehicle.Series,
     engine: vehicle.Engine,
     startYear: vehicle.StartYear,
     endYear: vehicle.EndYear,
     yearRange: vehicle.YearRange,
-    year: Number.isInteger(year) ? year : undefined,
+    year:
+      Number.isInteger(year) && year >= 1900 && year <= 2100 ? year : undefined,
     details: vehicle.Details,
     chassis: vehicle.Chassis,
     countryOfOrigin: vehicle.CountryOfOrigin,
     vin: vehicle.VIN,
     mid: vehicle.MID,
     vehicleType: vehicle.VehicleTypeText,
+    fuel: /diesel|petrol/i.test(vehicle.VehicleTypeText)
+      ? "petrol-diesel"
+      : /electric/i.test(vehicle.VehicleTypeText)
+        ? "electric"
+        : "unknown",
+    demonstration: false,
+    source: "asq",
   };
 }
 

@@ -12,9 +12,9 @@ Garage removal is keyed to the chosen vehicle, requires a native accessible dial
 
 ## Vehicle model and customer additions
 
-`Vehicle.year` remains the authoritative transport/profile value. `Vehicle.customerDetails` holds optional customer-provided `year`, `colour`, `odometerKm`, and `nickname`. The displayed effective year prefers the customer correction, while review retains and displays an AutoQuotes discrepancy. Odometer validation accepts whole numbers from 0 through 2,000,000 km; it does not infer service requirements.
+`Vehicle.year` remains the authoritative transport/profile value. `Vehicle.customerDetails` holds optional customer-provided `year`, `colour`, `odometerKm`, and `nickname`. The displayed effective year prefers the customer correction, while review retains and displays an ASQ discrepancy. Odometer validation accepts whole numbers from 0 through 2,000,000 km; it does not infer service requirements.
 
-AutoQuotes records retain `VehicleID`, `MID`, make, model, year, type-derived fuel class, details, and source. Live records use `source: autoquotes-live` and `demonstration: false`; the existing fixture uses `autoquotes-mock`; profile fixtures retain `illustrative-profile`. Saving replaces the same garage record so additions can be updated without a duplicate. Guest additions stay in the booking draft only.
+ASQ records retain `VehicleID`, `MID`, make, model, year, type-derived fuel class, details, and source. Live records use `source: asq` and `demonstration: false`; the make/model fixture uses `autoquotes-mock`; profile fixtures retain `illustrative-profile`. Saving replaces the same garage record so additions can be updated without a duplicate. Guest additions stay in the booking draft only.
 
 ## Assistant-first service selection
 
@@ -22,24 +22,22 @@ The service screen renders one accessible tab panel at a time. Auto Services Ass
 
 Changing vehicle clears all vehicle-specific service and assistant context but leaves saved profile vehicles untouched.
 
-## AutoQuotes boundaries
+## ASQ vehicle lookup boundary
 
-`src/server/autoquotes/vehicle-transport.ts` defines the supplied PascalCase vehicle DTO and envelope schema. Both mock and live registration providers normalize through this boundary.
+`src/server/asq/vehicle.ts` owns the live registration lookup. The booking journey calls `POST /api/vehicles/lookup-by-rego`, and that route calls `getVehicleByRegistration` directly. There is no registration-lookup provider switch or mock fallback.
 
-`AUTOQUOTES_VEHICLE_PROVIDER` selects `mock` or `live` for registration-number lookup. Catalogue and schedule routes, as well as make/model selection, always use the mock adapter and have no provider environment variables.
+The ASQ client:
 
-The live adapter:
-
-- requires a server-only base URL, key, configurable key-header name, and timeout;
-- accepts only HTTPS on the exact `ractest.com.au` allowlist entry and rejects URL credentials;
-- constructs the fixed registration endpoint and encoded query server-side;
-- clamps timeouts to 1–15 seconds;
+- requires the configured ASQ URL, endpoint, API key, Entra scope, managed-identity client ID, and correlation-header name;
+- accepts only HTTPS on the exact `api-sit.ractest.com.au` allowlist entry and rejects URL credentials;
+- acquires a bearer token with Azure Managed Identity;
+- constructs the configured `GetVehicleByRego` endpoint and encoded query server-side;
 - checks HTTP status and validates the complete envelope and each vehicle result;
-- distinguishes empty results, multiple candidates, unavailable responses, and timeouts;
+- distinguishes empty results, ambiguous results, unavailable responses, and timeouts;
 - returns generic customer messages without upstream details or secrets;
-- never falls back to mock data after a live failure.
+- never falls back to demonstration vehicle data after a live failure.
 
-No live request occurs at startup or in tests. Enabling it requires `AUTOQUOTES_VEHICLE_PROVIDER=live`, `AUTOQUOTES_BASE_URL=https://ractest.com.au`, `AUTOQUOTES_SUBSCRIPTION_KEY`, and the verified `AUTOQUOTES_SUBSCRIPTION_KEY_HEADER`. Live connectivity remains unverified until approved credentials are placed in ignored `.env.local` and an explicit end-to-end test is run.
+No live request occurs at startup. Lookup requires the six ASQ variables documented in `.env.example`; live connectivity remains unverified until approved credentials are placed in ignored `.env.local` and an explicit end-to-end test is run. Make/model selection, service catalogues, and schedules remain deterministic fixtures and are not ASQ vehicle registration lookups.
 
 ## Images and attribution
 

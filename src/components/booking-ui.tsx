@@ -273,8 +273,8 @@ export function VehicleSummary({
         <small>
           {vehicle.source === "illustrative-profile"
             ? "Illustrative profile vehicle · vehicle-specific eligibility and schedules unavailable"
-            : vehicle.source === "autoquotes-live"
-              ? "Vehicle supplied by AutoQuotes · customer additions are shown separately"
+            : vehicle.source === "asq"
+              ? "Vehicle supplied by ASQ · customer additions are shown separately"
               : "Mock vehicle record · details beyond the fixture are unverified"}
         </small>
       </div>

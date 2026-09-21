@@ -1,14 +1,26 @@
 import "server-only";
+import { getVehicleByRegistration } from "@/server/asq/vehicle";
 import type { AutoQuotesAdapter } from "./contracts";
 import { mockAutoQuotes } from "./mock";
-import { realAutoQuotes } from "./real";
 
+/** @deprecated Registration lookup now calls ASQ directly. */
 export function getVehicleLookupAdapter(): AutoQuotesAdapter {
-  const provider = process.env.AUTOQUOTES_VEHICLE_PROVIDER ?? "mock";
-  if (provider === "mock") return mockAutoQuotes;
-  if (provider === "live") return realAutoQuotes;
-  throw new Error("Unknown AutoQuotes vehicle provider configuration.");
+  return {
+    ...mockAutoQuotes,
+    async lookupRegistration(registration) {
+      try {
+        const vehicle = await getVehicleByRegistration(registration);
+        return vehicle ? { status: "found", vehicle } : { status: "not-found" };
+      } catch {
+        return {
+          status: "unavailable",
+          message: "Vehicle lookup is temporarily unavailable.",
+        };
+      }
+    },
+  };
 }
+
 export function getMockServiceAdapter(): AutoQuotesAdapter {
   return mockAutoQuotes;
 }

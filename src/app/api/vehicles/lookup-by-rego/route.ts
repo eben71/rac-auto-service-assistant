@@ -1,17 +1,14 @@
 import { NextResponse } from "next/server";
-import { z } from "zod";
+import { registrationSchema } from "@/domain/schemas";
 import {
   AsqVehicleLookupError,
   getVehicleByRegistration,
 } from "@/server/asq/vehicle";
 
-const requestSchema = z.object({
-  registrationNumber: z.string().trim().min(2).max(12),
-});
-
 export async function POST(request: Request) {
-  const parsed = requestSchema.safeParse(
-    await request.json().catch(() => null),
+  const body: unknown = await request.json().catch(() => null);
+  const parsed = registrationSchema.safeParse(
+    (body as { registrationNumber?: unknown })?.registrationNumber,
   );
   if (!parsed.success) {
     return NextResponse.json(
@@ -26,21 +23,11 @@ export async function POST(request: Request) {
   }
 
   try {
-    const vehicle = await getVehicleByRegistration(
-      parsed.data.registrationNumber,
-    );
+    const vehicle = await getVehicleByRegistration(parsed.data);
     if (!vehicle) {
-      return NextResponse.json(
-        {
-          error: {
-            code: "VEHICLE_NOT_FOUND",
-            message: "No vehicle was found for that registration.",
-          },
-        },
-        { status: 404 },
-      );
+      return NextResponse.json({ status: "not-found" });
     }
-    return NextResponse.json({ vehicle });
+    return NextResponse.json({ status: "found", vehicle });
   } catch (error) {
     if (error instanceof AsqVehicleLookupError) {
       console.error("ASQ vehicle lookup failed", {

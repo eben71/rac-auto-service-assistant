@@ -362,9 +362,13 @@ export function BookingJourney() {
     setLookupStatus("loading");
     try {
       const path =
-        mode === "registration" ? "/api/vehicles" : "/api/vehicles/make-model";
+        mode === "registration"
+          ? "/api/vehicles/lookup-by-rego"
+          : "/api/vehicles/make-model";
       const payload =
-        mode === "registration" ? { registration } : { make, model };
+        mode === "registration"
+          ? { registrationNumber: registration }
+          : { make, model };
       const result = vehicleResponseSchema.parse(await postJson(path, payload));
       if (result.status === "found") {
         selectVehicle(result.vehicle);
@@ -817,10 +821,10 @@ export function BookingJourney() {
                       >
                         {draft.vehicle.year && (
                           <p className="source-note">
-                            AutoQuotes supplied year:{" "}
+                            ASQ supplied year:{" "}
                             <strong>{draft.vehicle.year}</strong>. Change it
-                            only to record a customer correction; the AutoQuotes
-                            value will be retained.
+                            only to record a customer correction; the ASQ value
+                            will be retained.
                           </p>
                         )}
                         <div className="vehicle-detail-grid">
@@ -883,8 +887,8 @@ export function BookingJourney() {
                           Number(vehicleDetails.year) !==
                             draft.vehicle.year && (
                             <p className="discrepancy-note">
-                              Customer year differs from the AutoQuotes year.
-                              Both values will be retained for review.
+                              Customer year differs from the ASQ year. Both
+                              values will be retained for review.
                             </p>
                           )}
                         <TextButton
@@ -1180,7 +1184,8 @@ export function BookingJourney() {
               )}
               <p className="demo-footnote">
                 These are synthetic catalogue fixtures. Vehicle-specific
-                applicability, inclusions and pricing await AutoQuotes records.
+                applicability, inclusions and pricing await approved service
+                records.
               </p>
             </div>
           )}
@@ -1269,8 +1274,8 @@ export function BookingJourney() {
                 draft.vehicle?.year ??
                 "Year not provided"}{" "}
               {draft.vehicle?.make} {draft.vehicle?.model} ·{" "}
-              {draft.vehicle?.source === "autoquotes-live"
-                ? "AutoQuotes lookup with customer additions"
+              {draft.vehicle?.source === "asq"
+                ? "ASQ lookup with customer additions"
                 : "Demonstration data"}
             </p>
             {draft.vehicle?.year &&
@@ -1278,8 +1283,7 @@ export function BookingJourney() {
               draft.vehicle.year !== draft.vehicle.customerDetails.year && (
                 <p>
                   Customer supplied year {draft.vehicle.customerDetails.year};
-                  AutoQuotes supplied {draft.vehicle.year}. Confirm with the
-                  workshop.
+                  ASQ supplied {draft.vehicle.year}. Confirm with the workshop.
                 </p>
               )}
             {draft.vehicle?.customerDetails && (
@@ -1331,7 +1335,7 @@ export function BookingJourney() {
           )}
           <p className="demo-footnote">
             Prices, vehicle applicability and workshop availability have not
-            been retrieved from AutoQuotes.
+            been retrieved from the service catalogue.
           </p>
           <div className="back-row">
             <TextButton onClick={() => setStep(previousStep(step))}>

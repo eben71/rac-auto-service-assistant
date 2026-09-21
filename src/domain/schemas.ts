@@ -24,7 +24,7 @@ export const vehicleSchema = z.object({
   details: z.string().optional(),
   source: z
     .enum([
-      "autoquotes-live",
+      "asq",
       "autoquotes-mock",
       "illustrative-profile",
       "synthetic-lookup",

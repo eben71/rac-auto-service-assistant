@@ -76,7 +76,7 @@ export function createLiveRegistrationLookup(
         };
       if (parsed.data.Result.length === 0) return { status: "not-found" };
       const vehicles = parsed.data.Result.map((item) =>
-        normalizeVehicle(item, normalizedRegistration, "autoquotes-live"),
+        normalizeVehicle(item, normalizedRegistration, "asq"),
       );
       return vehicles.length === 1
         ? { status: "found", vehicle: vehicles[0] }

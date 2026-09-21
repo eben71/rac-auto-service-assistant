@@ -26,36 +26,14 @@ npm run build
 
 1. **Begin quote:** an unauthenticated customer is automatically a guest and can continue with the required name and email fields. The header offers Sign in without a redundant guest action.
 2. **Vehicle:** a guest can search immediately. A signed-in developer sees their isolated saved-vehicle garage. Signing in, signing out, or changing profiles clears registration input, active vehicle, lookup errors, service choices, schedule, workshop notes, and assistant context. Saved profile vehicles remain intact.
-3. **Vehicle details:** the selected summary contains the image, identity, registration, source details, optional customer year correction, colour, odometer, nickname, save state, and Continue action. An AutoQuotes year remains authoritative; a different customer year is stored separately and both are shown for review. Guest additions last only for the current in-memory booking.
+3. **Vehicle details:** the selected summary contains the image, identity, registration, source details, optional customer year correction, colour, odometer, nickname, save state, and Continue action. An ASQ year remains authoritative; a different customer year is stored separately and both are shown for review. Guest additions last only for the current in-memory booking.
 4. **Garage:** Add to my vehicles sits inside the selected vehicle card. Existing records can be updated without creating a duplicate. Removal uses an accessible confirmation dialog and a status message that clears after about four seconds.
 5. **Service selection:** Auto Services Assistant is the default mode. It retains the existing deterministic clarification, recommendation, cannot-match, and safety flows. The label “Prototype assistant — demonstration responses” makes its status clear. The mutually exclusive manual mode contains the existing main cards, additional-services route, and mock schedule options. Conversation and valid selections survive mode changes; recommendations require explicit confirmation.
 6. **Review:** selected mock services, schedule, workshop notes, effective vehicle details, and any year discrepancy are displayed. Submission remains outside scope.
 
-## AutoQuotes provider configuration
+## ASQ Auto Services Booking vehicle lookup
 
-Only vehicle registration lookup has a configurable provider. Safe defaults keep everything local:
-
-```dotenv
-AUTOQUOTES_VEHICLE_PROVIDER=mock
-```
-
-To enable live registration lookup in an approved local test environment, set:
-
-```dotenv
-AUTOQUOTES_VEHICLE_PROVIDER=live
-AUTOQUOTES_BASE_URL=https://ractest.com.au
-AUTOQUOTES_SUBSCRIPTION_KEY=<secret>
-AUTOQUOTES_SUBSCRIPTION_KEY_HEADER=<verified gateway header name>
-AUTOQUOTES_TIMEOUT_MS=5000
-```
-
-All values are server-only; do not use `NEXT_PUBLIC_`. The header name is deliberately required because it must be verified against the RAC gateway contract. The adapter accepts HTTPS on the allowlisted `ractest.com.au` host only, sends `POST /api/autoservicesbooking/GetVehicleByRego?registrationNumber=...`, validates the response envelope, normalizes the supplied vehicle DTO, and returns every candidate when more than one matches. Missing configuration, non-success responses, empty results, timeouts, and network failures have distinct safe outcomes. A live failure never falls back to the Pajero mock.
-
-Only registration lookup can be live. Make/model lookup, main and additional service catalogues, and logbook schedules remain deterministic mocks; they do not have provider environment variables.
-
-### ASQ Auto Services Booking lookup
-
-The dedicated `POST /api/vehicles/lookup-by-rego` route accepts:
+The booking journey uses the `POST /api/vehicles/lookup-by-rego` route, which accepts:
 
 ```json
 { "registrationNumber": "1GDU034" }
@@ -76,7 +54,7 @@ The server acquires a bearer token using Azure Managed Identity, adds the API ke
 
 ## Architecture and data boundaries
 
-`src/domain` owns booking, vehicle, service, assistant models and schemas. `src/components/booking-journey.tsx` owns the in-memory booking and identity-transition resets. `src/server/autoquotes/vehicle-transport.ts` validates and normalizes the shared upstream vehicle contract; `mock.ts` and `real.ts` use that same boundary. `src/app/api` keeps credentials and upstream requests off the browser.
+`src/domain` owns booking, vehicle, service, assistant models and schemas. `src/components/booking-journey.tsx` owns the in-memory booking and identity-transition resets. `src/server/asq/vehicle.ts` validates and normalizes the ASQ vehicle response. `src/app/api` keeps credentials and upstream requests off the browser.
 
 Developer garages use an ignored local JSON file and an HTTP-only demonstration session token. This is local prototype storage, not production authentication or a customer profile integration. Vehicle images use the AllBrands catalogue or bundled representative fixtures with a generic fallback. See [docs/architecture.md](docs/architecture.md) for boundaries and limitations.
 
@@ -84,8 +62,8 @@ The Microsoft Foundry boundary remains unchanged. The assistant shown here is de
 
 ## Known limitations and next work
 
-- Live AutoQuotes connectivity was not exercised without a supplied subscription key and verified header name; unit tests use mocked HTTP responses only.
+- Live ASQ connectivity was not exercised without approved identity and subscription-key configuration.
 - Service eligibility, inclusions, pricing, availability, booking submission, production identity, and real customer/profile APIs are not implemented.
 - Make/model and all service operations remain synthetic or mocked.
-- The actual AutoQuotes OpenAPI and sanitized error/edge-case samples should be checked before broader integration testing.
+- The actual ASQ OpenAPI and sanitized error/edge-case samples should be checked before broader integration testing.
 - The next task should validate one approved end-to-end live registration request, capture a sanitized response, and then wire the independently developed Foundry provider without changing the application-owned catalogue validation and safety rules.

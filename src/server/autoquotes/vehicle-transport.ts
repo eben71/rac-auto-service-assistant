@@ -49,7 +49,7 @@ export function normalizeVehicle(
         ? "electric"
         : "unknown",
     details: dto.Details.trim() || undefined,
-    demonstration: source !== "autoquotes-live",
+    demonstration: source !== "asq",
     source,
   };
 }

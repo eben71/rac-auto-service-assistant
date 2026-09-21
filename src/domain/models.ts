@@ -15,10 +15,7 @@ export interface Vehicle {
   mid?: string;
   details?: string;
   source?:
-    | "autoquotes-live"
-    | "autoquotes-mock"
-    | "illustrative-profile"
-    | "synthetic-lookup";
+    "asq" | "autoquotes-mock" | "illustrative-profile" | "synthetic-lookup";
   customerDetails?: VehicleCustomerDetails;
 }
 export interface VehicleCustomerDetails {
