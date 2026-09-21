@@ -1,6 +1,6 @@
 # RAC Auto Services assistant prototype
 
-Single-repository Next.js demonstration of the opening RAC-style booking journey. All vehicles and services are synthetic demonstration fixtures. No quote, appointment or booking is created.
+Single-repository Next.js demonstration of the opening RAC-style booking journey. The supplied Pajero payload and service identifiers are AutoQuotes mock records; the profile vehicles and other lookups are illustrative demonstration fixtures. No quote, appointment or booking is created.
 
 ## Run on Windows / PowerShell
 
@@ -12,7 +12,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`. The safe adapter default is `AUTOQUOTES_PROVIDER=mock`; the assistant is always a labelled deterministic demo until Foundry is implemented. If npm on this machine resolves to a missing roaming installation, use `node 'C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js'` in place of `npm` and add `--cache .npm-cache` to npm commands.
+In `.env.local`, fill all three `DEMO_DEVELOPER_1/2/3_EMAIL` and `DEMO_DEVELOPER_1/2/3_NAME` pairs with the actual authorised developers. Email addresses must end in `@rac.com.au`. Missing slots cannot sign in; guest mode still works. The supplied task did not include names or addresses, so the checked-in example has empty values. Open `http://localhost:3000`. The safe adapter default is `AUTOQUOTES_PROVIDER=mock`; the assistant is always a labelled deterministic demo until Foundry is implemented. If npm on this machine resolves to a missing roaming installation, use `node 'C:\Program Files\nodejs\node_modules\npm\bin\npm-cli.js'` in place of `npm` and add `--cache .npm-cache` to npm commands.
 
 ```powershell
 npm run format:check
@@ -24,9 +24,9 @@ npm run build
 
 ## Implemented journey
 
-1. Begin quote: required name and email fields, validated in the browser. Use synthetic input. The data stays in memory and is never sent to Foundry.
-2. Vehicle details: server-side adapter lookup by registration (`DEMO16`) or a small synthetic make/model list. Loading, selected, not-found and unavailable states are shown.
-3. Service selection: demonstration main services, including the screenshot's Vehicle Inspection item, and an optional inline deterministic help panel. EV-only fixtures cannot be selected for the synthetic Pajero Sport. A main service can be deselected; the Additional services card also opens that screen without requiring a main package.
+1. Begin quote: Sign in with a configured developer email, or Continue as guest and use the existing required name/email fields. These customer fields stay in memory and are never sent to Foundry.
+2. Vehicle details: developers see their private illustrative garage first, can select/remove a saved car, find another, and explicitly add a found vehicle. Guests see lookup directly. Registration `1GDU034` returns the supplied 2016 Mitsubishi Pajero Sport mock (VehicleID `53275`, MID `MIT39408`); the separate make/model dataset remains synthetic. Loading, selected, not-found and unavailable states are shown.
+3. Service selection: the mock catalogue uses AutoQuotes ServiceTypeId values, including Vehicle Inspection, and the optional inline deterministic help panel. EV-only items cannot be selected for the diesel Pajero Sport. A main service can be deselected; the Additional services card opens that screen without requiring a main package. Choosing Logbook for the Pajero loads its four supplied MID schedule options. Illustrative vehicles have no vehicle-specific logbook schedules or verified service eligibility.
 4. Additional services: a selectable demonstration checklist; selections survive Back and Next navigation.
 5. Review: selected demonstration items and any captured workshop note. There is no price, appointment, quote calculation, account or booking submission. Remaining sidebar steps are out of prototype scope.
 
@@ -34,9 +34,9 @@ The help panel accepts a vague symptom and asks a clarification question, includ
 
 ## Architecture
 
-`src/domain` holds typed booking, vehicle, service and assistant models, trust-boundary schemas, navigation, catalogue validation and demo safety decisions. `src/components/booking-journey.tsx` owns the in-memory draft and navigation; `booking-ui.tsx` holds reusable presentation components; `service-assistant.tsx` owns the inline conversation surface. `src/app/api` exposes server routes. `src/server/autoquotes` selects mock or real adapters. `src/server/foundry.ts` defines the future AI boundary. No customer-facing provider control is exposed. No customer personal information is sent to the AI boundary.
+`src/domain` holds typed booking, vehicle, service and assistant models, trust-boundary schemas, navigation, catalogue validation and demo safety decisions. `src/components/booking-journey.tsx` owns the in-memory draft and navigation; `booking-ui.tsx` holds reusable presentation components; `service-assistant.tsx` owns the inline conversation surface. `src/app/api` exposes server routes. `src/server/autoquotes` selects mock or real adapters. `src/server/foundry.ts` defines the future AI boundary. Profile and image details are in [docs/architecture.md](docs/architecture.md). No customer-facing provider control is exposed. No customer personal information is sent to the AI boundary.
 
-The mock adapter has synthetic vehicle and catalogue fixtures. The real AutoQuotes adapter deliberately fails with a clear unconfigured error; there is no silent mock fallback. External responses must be mapped into domain models and validated with Zod before React receives them. The server routes return generic unavailable messages on adapter errors.
+The mock adapter retains original field casing in transport DTOs and maps to normalized models at its boundary. It has the supplied vehicle and service IDs, plus the four MID schedule IDs. The task did not include the actual `InformationText` sample payload or full schedule envelope, so descriptions and omitted fields remain provisional rather than claiming exact contract fidelity. The real AutoQuotes adapter deliberately fails with a clear unconfigured error; there is no silent mock fallback. Server routes return generic unavailable messages on adapter errors.
 
 The Foundry provider defines future multi-turn input and structured decisions for clarification, recommendation, inability to match, safety escalation, workshop notes, uncertainty and application-owned tool-call requests. The internal `/api/internal/ai-connectivity` route returns `not-configured` and missing configuration names only. It does not call a model or return secrets. This endpoint must be protected or removed before any production exposure.
 
@@ -52,10 +52,10 @@ Confirm the approved project/resource endpoint, deployment, supported API surfac
 
 ## Design mapping and assumptions
 
-All five supplied images in `docs/reference/screenshots/` were inspected. The UI was compared with Screens 1, 2, 3A/3B and 4 at a roughly matching desktop viewport, then checked at a 390px mobile viewport in headless Chrome. The sidebar split, content alignment, progress markers, form stacking, tabs, dark vehicle summary, service-card structure and additional-service checklist now follow the references. The inline assistant deliberately adds height above the manual cards. Rendered QA images are in `docs/qa/screenshots/`. The `RAC` text block remains an explicitly labelled placeholder, not an official logo; no approved standalone logo or font asset was supplied. Place approved assets under `public/brand/` when available. Service descriptions remain generic demonstration copy because actual catalogue inclusions and eligibility are unverified. Pixel-perfect fidelity is not claimed.
+All five supplied images in `docs/reference/screenshots/` were inspected in Task 002. The split layout, progress markers, tabs, dark vehicle summary, cards and checklist follow the references. Task 003 adds a compact profile menu, saved-vehicle cards and image area while preserving that layout. The `RAC` text block remains an explicitly labelled placeholder: this task's attachment contained only pasted text and no approved logo image. Place the approved asset under `public/brand/` when supplied. No approved font asset was found. Service descriptions remain provisional demonstration copy; pixel-perfect fidelity is not claimed.
 
 ## Next tasks
 
-Obtain approved logo/font assets for the final visual pass; obtain AutoQuotes OpenAPI and sanitized examples; confirm Foundry resource and auth details; implement real contract mapping and server-side recommendation validation; then test against approved non-production resources. Real integration, eligibility, pricing, booking and submission are not implemented.
+Supply the approved logo and actual three developer email/name pairs. Obtain the sanitized AutoQuotes InformationText/schedule samples and OpenAPI, then confirm Foundry resource and auth details. Real integration, eligibility, pricing, booking and submission are not implemented.
 
 For parallel hackathon work, a frontend engineer can continue in `src/components/` and `src/app/globals.css`, an AutoQuotes engineer can own `src/server/autoquotes/` and the API contract mapping, and a Foundry engineer can own `src/server/foundry.ts` and future server-side orchestration. Coordinate any shared `src/domain/` contract changes before wiring real providers.

@@ -8,6 +8,7 @@ coverage/
 *.tsbuildinfo
 *.log
 tmp/
+.local-data/
 
 # Local configuration and secrets
 .env*

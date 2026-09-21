@@ -14,3 +14,4 @@
 12. Avoid unnecessary agent frameworks, vector databases, persistence, authentication frameworks and production booking submission.
 13. Do not commit or push unless explicitly asked.
 14. Make sure nothing committed has PII data embedded.
+15. For the hackathon don't write any test coverage. Only focus on the application solution.

@@ -13,12 +13,18 @@ export const registrationSchema = z
   .regex(/^[a-zA-Z0-9 -]+$/);
 export const vehicleSchema = z.object({
   id: z.string().min(1),
-  year: z.number().int().min(1900).max(2100),
+  year: z.number().int().min(1900).max(2100).optional(),
   make: z.string().min(1),
   model: z.string().min(1),
   registration: z.string().optional(),
   fuel: z.enum(["petrol-diesel", "electric", "unknown"]),
   demonstration: z.boolean(),
+  vehicleId: z.string().optional(),
+  mid: z.string().optional(),
+  details: z.string().optional(),
+  source: z
+    .enum(["autoquotes-mock", "illustrative-profile", "synthetic-lookup"])
+    .optional(),
 });
 export const serviceSchema = z.object({
   id: z.string().min(1),
@@ -26,6 +32,8 @@ export const serviceSchema = z.object({
   description: z.string(),
   category: z.enum(["main", "additional"]),
   evOnly: z.boolean().optional(),
+  isActive: z.boolean().optional(),
+  availableOnline: z.boolean().optional(),
   demonstration: z.boolean(),
 });
 export const vehicleResponseSchema = z.discriminatedUnion("status", [

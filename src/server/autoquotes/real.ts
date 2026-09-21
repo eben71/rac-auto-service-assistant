@@ -16,5 +16,8 @@ export const realAutoQuotes: AutoQuotesAdapter = {
   async getCatalogue() {
     return unavailable();
   },
+  async getSchedules() {
+    return unavailable();
+  },
 };
 // TODO: map approved OpenAPI DTOs to domain models and validate at this boundary.

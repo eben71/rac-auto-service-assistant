@@ -5,12 +5,16 @@ export interface Customer {
 }
 export interface Vehicle {
   id: string;
-  year: number;
+  year?: number;
   make: string;
   model: string;
   registration?: string;
   fuel: "petrol-diesel" | "electric" | "unknown";
   demonstration: boolean;
+  vehicleId?: string;
+  mid?: string;
+  details?: string;
+  source?: "autoquotes-mock" | "illustrative-profile" | "synthetic-lookup";
 }
 export interface ServiceItem {
   id: string;
@@ -18,6 +22,8 @@ export interface ServiceItem {
   description: string;
   category: "main" | "additional";
   evOnly?: boolean;
+  isActive?: boolean;
+  availableOnline?: boolean;
   demonstration: boolean;
 }
 export interface BookingDraft {
@@ -26,6 +32,7 @@ export interface BookingDraft {
   mainServiceId: string | null;
   additionalServiceIds: string[];
   workshopNotes: string[];
+  serviceScheduleId?: string | null;
 }
 export type BookingStep =
   "begin" | "vehicle" | "services" | "additional" | "review";
