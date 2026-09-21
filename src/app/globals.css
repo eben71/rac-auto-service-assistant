@@ -338,6 +338,31 @@ textarea.input {
   opacity: 0.55;
   cursor: not-allowed;
 }
+.spinner {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.spinner-circle {
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(39, 57, 74, 0.25);
+  border-top-color: var(--blue);
+  border-radius: 50%;
+  animation: spinner-rotate 0.7s linear infinite;
+}
+.spinner-lg .spinner-circle {
+  width: 24px;
+  height: 24px;
+  border-width: 3px;
+  border-color: rgba(32, 91, 121, 0.2);
+  border-top-color: var(--blue);
+}
+@keyframes spinner-rotate {
+  to {
+    transform: rotate(360deg);
+  }
+}
 .secondary {
   padding: 6px 0;
   border: 0;
@@ -366,6 +391,11 @@ textarea.input {
   font-size: 16px;
   line-height: 1.5;
   margin: 15px 0;
+}
+.loading-message {
+  display: flex;
+  align-items: center;
+  gap: 10px;
 }
 
 .section-label {
@@ -690,6 +720,18 @@ textarea.input {
 }
 .message.user {
   background: #fff8db;
+}
+.message.thinking {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+.message.thinking .message-label {
+  margin-bottom: 0;
+  text-transform: none;
+  letter-spacing: normal;
+  font-size: 14px;
+  color: #205b79;
 }
 .message-label {
   display: block;
