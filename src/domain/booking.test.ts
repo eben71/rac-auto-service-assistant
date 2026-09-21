@@ -19,7 +19,7 @@ const vehicle: Vehicle = {
 };
 const items: ServiceItem[] = [
   {
-    id: "essentials",
+    id: "1",
     name: "Essentials",
     description: "Demo",
     category: "main",
@@ -37,10 +37,10 @@ const items: ServiceItem[] = [
 
 describe("booking state and validation", () => {
   it("moves back and forward without replacing the draft", () => {
-    const draft = { ...initialDraft, vehicle, mainServiceId: "essentials" };
+    const draft = { ...initialDraft, vehicle, mainServiceId: "1" };
     expect(nextStep("services")).toBe("additional");
     expect(previousStep("additional")).toBe("services");
-    expect(draft.mainServiceId).toBe("essentials");
+    expect(draft.mainServiceId).toBe("1");
   });
   it("rejects bad customer input and registration", () => {
     expect(
@@ -55,6 +55,9 @@ describe("booking state and validation", () => {
   it("rejects absent or ineligible service IDs", () => {
     expect(() => selectServiceId("invented", items, vehicle)).toThrow();
     expect(() => selectServiceId("ev", items, vehicle)).toThrow();
+    expect(() =>
+      selectServiceId("1", [{ ...items[0], availableOnline: false }], vehicle),
+    ).toThrow();
   });
   it("escalates a serious braking concern before recommending anything", () => {
     const state = startDemoAssistant("My brakes failed and I cannot stop");
@@ -84,7 +87,7 @@ describe("booking state and validation", () => {
       answerDemoAssistant(state, "Routine servicing", items, vehicle),
     ).toMatchObject({
       kind: "recommendation",
-      serviceId: "essentials",
+      serviceId: "1",
     });
     expect(
       answerDemoAssistant(state, "Routine servicing", [], vehicle).kind,

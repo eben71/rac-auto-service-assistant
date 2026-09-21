@@ -1,5 +1,17 @@
-import type { ButtonHTMLAttributes, ReactNode } from "react";
+"use client";
+import {
+  useEffect,
+  useState,
+  type ButtonHTMLAttributes,
+  type ReactNode,
+} from "react";
+import Image from "next/image";
 import type { BookingStep, ServiceItem, Vehicle } from "@/domain/models";
+import {
+  profileImageEntries,
+  profileVehicles,
+} from "@/domain/profile-fixtures";
+import type { VehicleImage } from "@/server/vehicle-images";
 
 const progress = [
   "Begin quote",
@@ -22,23 +34,32 @@ const activeIndex: Record<BookingStep, number> = {
 export function BookingLayout({
   step,
   children,
+  profileName,
+  onSignIn,
+  onVehicles,
+  onSignOut,
 }: {
   step: BookingStep;
   children: ReactNode;
+  profileName?: string;
+  onSignIn(): void;
+  onVehicles(): void;
+  onSignOut(): void;
 }) {
   const current = activeIndex[step];
   return (
     <div className="booking-shell">
       <aside className="sidebar" aria-label="Booking progress">
         <div className="sidebar-header">
-          <div
-            className="brand"
-            aria-label="RAC Auto Services branding placeholder"
-          >
-            <span className="brand-mark">RAC</span>
-            <span className="brand-caption">
-              Auto Services · demo placeholder
-            </span>
+          <div className="brand">
+            <Image
+              className="brand-logo"
+              src="/brand/rac-for-the-better.png"
+              width={176}
+              height={161}
+              priority
+              alt="RAC — For the better"
+            />
           </div>
           <h2>Your Service</h2>
         </div>
@@ -66,6 +87,57 @@ export function BookingLayout({
         </p>
       </aside>
       <main className="main">
+        <details
+          className="profile-menu"
+          onKeyDown={(event) => {
+            if (event.key === "Escape") {
+              event.currentTarget.open = false;
+              event.currentTarget.querySelector("summary")?.focus();
+            }
+          }}
+        >
+          <summary>{profileName ?? "Guest"}</summary>
+          <div className="profile-menu-actions">
+            {profileName ? (
+              <>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    onVehicles();
+                  }}
+                >
+                  My vehicles
+                </button>
+                <button
+                  type="button"
+                  onClick={(event) => {
+                    event.currentTarget
+                      .closest("details")
+                      ?.removeAttribute("open");
+                    onSignOut();
+                  }}
+                >
+                  Sign out
+                </button>
+              </>
+            ) : (
+              <button
+                type="button"
+                onClick={(event) => {
+                  event.currentTarget
+                    .closest("details")
+                    ?.removeAttribute("open");
+                  onSignIn();
+                }}
+              >
+                Sign in
+              </button>
+            )}
+          </div>
+        </details>
         <div className="content">{children}</div>
       </main>
     </div>
@@ -159,27 +231,136 @@ export function TextButton({
 export function VehicleSummary({
   vehicle,
   onChange,
+  image,
+  compact = false,
+  children,
 }: {
   vehicle: Vehicle;
   onChange(): void;
+  image?: VehicleImage | null;
+  compact?: boolean;
+  children?: ReactNode;
 }) {
+  const effectiveYear = vehicle.customerDetails?.year ?? vehicle.year;
   return (
-    <div className="vehicle-summary-block">
-      <h3>Your car details</h3>
+    <div className={`vehicle-summary-block ${compact ? "compact" : ""}`}>
+      <h3>{compact ? "Selected vehicle" : "Your car details"}</h3>
       <div className="vehicle-summary">
+        <VehicleArtwork key={vehicle.id} vehicle={vehicle} image={image} />
         <strong>
           {vehicle.make.toUpperCase()} {vehicle.model.toUpperCase()}
         </strong>
         <span>
-          {vehicle.year}
+          {effectiveYear ?? "Year not provided"}
           {vehicle.registration ? ` · ${vehicle.registration}` : ""}
         </span>
+        {vehicle.details && <span>{vehicle.details}</span>}
+        {(vehicle.customerDetails?.nickname ||
+          vehicle.customerDetails?.colour ||
+          vehicle.customerDetails?.odometerKm !== undefined) && (
+          <span className="vehicle-extra-summary">
+            {[
+              vehicle.customerDetails.nickname,
+              vehicle.customerDetails.colour,
+              vehicle.customerDetails.odometerKm !== undefined
+                ? `${vehicle.customerDetails.odometerKm.toLocaleString()} km`
+                : undefined,
+            ]
+              .filter(Boolean)
+              .join(" · ")}
+          </span>
+        )}
         <small>
-          Synthetic demonstration vehicle · details beyond the fixture are
-          unverified
+          {vehicle.source === "illustrative-profile"
+            ? "Illustrative profile vehicle · vehicle-specific eligibility and schedules unavailable"
+            : vehicle.source === "autoquotes-live"
+              ? "Vehicle supplied by AutoQuotes · customer additions are shown separately"
+              : "Mock vehicle record · details beyond the fixture are unverified"}
         </small>
       </div>
+      {children}
       <TextButton onClick={onChange}>Change car</TextButton>
+    </div>
+  );
+}
+
+export function VehicleArtwork({
+  vehicle,
+  image,
+}: {
+  vehicle: Vehicle;
+  image?: VehicleImage | null;
+}) {
+  const fixtureIndex = profileVehicles.findIndex(
+    (item) =>
+      item.id === vehicle.id &&
+      item.make === vehicle.make &&
+      item.model === vehicle.model,
+  );
+  const [resolved, setResolved] = useState<VehicleImage | null>(null);
+  const [imageFailed, setImageFailed] = useState(false);
+  useEffect(() => {
+    if (fixtureIndex >= 0 || image !== undefined) return;
+    let cancelled = false;
+    fetch("/api/vehicle-image", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        id: vehicle.id,
+        make: vehicle.make,
+        model: vehicle.model,
+      }),
+    })
+      .then((response) => response.json())
+      .then((data: { image: VehicleImage | null }) => {
+        if (!cancelled) setResolved(data.image);
+      })
+      .catch(() => {
+        if (!cancelled) setResolved(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fixtureIndex, image, vehicle.id, vehicle.make, vehicle.model]);
+  const current = image ?? resolved;
+  const source = imageFailed
+    ? "/vehicles/generic.svg"
+    : (current?.url ??
+      (fixtureIndex >= 0
+        ? profileImageEntries[fixtureIndex].path
+        : "/vehicles/generic.svg"));
+  const illustrative = !imageFailed && (!!current || fixtureIndex >= 0);
+  return (
+    <div className="vehicle-artwork">
+      <Image
+        src={source}
+        width={220}
+        height={124}
+        unoptimized
+        onError={() => setImageFailed(true)}
+        alt={
+          illustrative
+            ? (current?.alt ??
+              `Representative illustration of ${vehicle.make} ${vehicle.model}`)
+            : "Generic vehicle silhouette"
+        }
+      />
+      <small>
+        {illustrative ? (
+          <>
+            Representative artwork:{" "}
+            <a
+              href="https://github.com/dobbygl/allbrands-api"
+              target="_blank"
+              rel="noreferrer"
+            >
+              AllBrands (CC BY 4.0)
+            </a>
+          </>
+        ) : (
+          "Generic vehicle illustration"
+        )}
+      </small>
     </div>
   );
 }
@@ -192,7 +373,7 @@ function ServiceIcon({ id }: { id: string }) {
     strokeLinecap: "round" as const,
     strokeLinejoin: "round" as const,
   };
-  if (id === "logbook")
+  if (id === "9")
     return (
       <svg
         className="service-icon"
@@ -204,7 +385,7 @@ function ServiceIcon({ id }: { id: string }) {
         <path d="M16 5v38M21 15h12M21 22h12M21 29h9" />
       </svg>
     );
-  if (id === "vehicle-inspection")
+  if (id === "4")
     return (
       <svg
         className="service-icon"

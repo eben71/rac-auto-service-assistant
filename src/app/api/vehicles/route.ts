@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { registrationSchema, vehicleResponseSchema } from "@/domain/schemas";
-import { getAutoQuotesAdapter } from "@/server/autoquotes";
+import { getVehicleLookupAdapter } from "@/server/autoquotes";
 
 export async function POST(request: Request) {
   try {
@@ -14,7 +14,7 @@ export async function POST(request: Request) {
         { status: 400 },
       );
     const result = vehicleResponseSchema.parse(
-      await getAutoQuotesAdapter().lookupRegistration(parsed.data),
+      await getVehicleLookupAdapter().lookupRegistration(parsed.data),
     );
     return NextResponse.json(result);
   } catch {

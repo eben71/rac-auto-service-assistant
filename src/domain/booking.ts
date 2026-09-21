@@ -6,6 +6,7 @@ export const initialDraft: BookingDraft = {
   mainServiceId: null,
   additionalServiceIds: [],
   workshopNotes: [],
+  serviceScheduleId: null,
 };
 export const stepOrder: BookingStep[] = [
   "begin",
@@ -24,7 +25,11 @@ export function selectable(
   item: ServiceItem,
   vehicle: Vehicle | null,
 ): boolean {
-  return !item.evOnly || vehicle?.fuel === "electric";
+  return (
+    item.isActive !== false &&
+    item.availableOnline !== false &&
+    (!item.evOnly || vehicle?.fuel === "electric")
+  );
 }
 export function selectServiceId(
   id: string,

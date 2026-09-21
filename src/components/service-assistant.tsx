@@ -151,11 +151,13 @@ export function ServiceAssistant({
             find a service to review.
           </p>
         </div>
-        <span className="demo-badge">Demo assistant</span>
+        <span className="demo-badge">
+          Prototype assistant — demonstration responses
+        </span>
       </div>
       <p className="assistant-caveat">
-        This is a deterministic service-navigation demo, not live AI or a
-        mechanical diagnosis.
+        Auto Services Assistant uses deterministic demonstration responses. It
+        is not live AI or a mechanical diagnosis.
       </p>
       <label className="field" htmlFor="assistant-description">
         <span>What would you like help with?</span>

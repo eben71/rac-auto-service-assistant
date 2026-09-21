@@ -70,7 +70,7 @@ export function answerDemoAssistant(
     /routine|scheduled|oil change/i.test(response)
   ) {
     const service = items.find(
-      (item) => item.id === "essentials" && item.category === "main",
+      (item) => item.id === "1" && item.category === "main",
     );
     if (service) {
       try {
