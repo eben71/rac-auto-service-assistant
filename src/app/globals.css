@@ -56,31 +56,13 @@ button {
   text-align: center;
 }
 .brand {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  margin: 0 auto 43px;
+  margin: 0 auto 24px;
   width: fit-content;
 }
-.brand-mark {
-  display: grid;
-  place-items: center;
-  width: 90px;
-  height: 82px;
-  background: #fff7c0;
-  border: 2px solid #e1bf00;
-  border-radius: 8px;
-  color: #143453;
-  font-weight: 900;
-  font-style: italic;
-  letter-spacing: -0.06em;
-  font-size: 31px;
-}
-.brand-caption {
-  color: #314a61;
-  font-size: 11px;
-  font-weight: 700;
+.brand-logo {
+  display: block;
+  width: 140px;
+  height: auto;
 }
 .sidebar-header h2 {
   margin: 0;
@@ -874,19 +856,9 @@ textarea.input {
   }
   .brand {
     margin: 0;
-    flex-direction: row;
-    gap: 9px;
   }
-  .brand-mark {
-    width: 47px;
-    height: 40px;
-    font-size: 17px;
-    border-width: 1px;
-  }
-  .brand-caption {
-    font-size: 10px;
-    text-align: left;
-    max-width: 92px;
+  .brand-logo {
+    width: 88px;
   }
   .sidebar-header h2 {
     font-size: 19px;

@@ -51,14 +51,15 @@ export function BookingLayout({
     <div className="booking-shell">
       <aside className="sidebar" aria-label="Booking progress">
         <div className="sidebar-header">
-          <div
-            className="brand"
-            aria-label="RAC Auto Services branding placeholder"
-          >
-            <span className="brand-mark">RAC</span>
-            <span className="brand-caption">
-              Auto Services · demo placeholder
-            </span>
+          <div className="brand">
+            <Image
+              className="brand-logo"
+              src="/brand/rac-for-the-better.png"
+              width={176}
+              height={161}
+              priority
+              alt="RAC — For the better"
+            />
           </div>
           <h2>Your Service</h2>
         </div>

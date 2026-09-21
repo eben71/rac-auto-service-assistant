@@ -1,5 +1,7 @@
 # Task 003 architecture and limitations
 
+The approved RAC logo supplied after the initial implementation is stored at `public/brand/rac-for-the-better.png`. The booking layout renders the same asset with descriptive alternative text on desktop and mobile; it is not recreated in CSS.
+
 ## Demo identity and garage
 
 The landing screen offers guest continuation and a local developer selector. The server accepts a configured email irrespective of password; the password input never leaves the browser, is not validated, and is cleared on success. This **does not verify identity** and must never protect real RAC customer data. Three email/name pairs are read from `.env.local`; the server never publishes the allowlist. Email comparison trims whitespace and ignores case. Unknown emails get one generic error.

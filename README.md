@@ -52,10 +52,10 @@ Confirm the approved project/resource endpoint, deployment, supported API surfac
 
 ## Design mapping and assumptions
 
-All five supplied images in `docs/reference/screenshots/` were inspected in Task 002. The split layout, progress markers, tabs, dark vehicle summary, cards and checklist follow the references. Task 003 adds a compact profile menu, saved-vehicle cards and image area while preserving that layout. The `RAC` text block remains an explicitly labelled placeholder: this task's attachment contained only pasted text and no approved logo image. Place the approved asset under `public/brand/` when supplied. No approved font asset was found. Service descriptions remain provisional demonstration copy; pixel-perfect fidelity is not claimed.
+All five supplied images in `docs/reference/screenshots/` were inspected in Task 002. The split layout, progress markers, tabs, dark vehicle summary, cards and checklist follow the references. Task 003 adds a compact profile menu, saved-vehicle cards and image area while preserving that layout. The supplied approved RAC logo is stored at `public/brand/rac-for-the-better.png` and is used at its original aspect ratio in both desktop and mobile layouts. No approved font asset was found. Service descriptions remain provisional demonstration copy; pixel-perfect fidelity is not claimed.
 
 ## Next tasks
 
-Supply the approved logo and actual three developer email/name pairs. Obtain the sanitized AutoQuotes InformationText/schedule samples and OpenAPI, then confirm Foundry resource and auth details. Real integration, eligibility, pricing, booking and submission are not implemented.
+Supply the actual three developer email/name pairs. Obtain the sanitized AutoQuotes InformationText/schedule samples and OpenAPI, then confirm Foundry resource and auth details. Real integration, eligibility, pricing, booking and submission are not implemented.
 
 For parallel hackathon work, a frontend engineer can continue in `src/components/` and `src/app/globals.css`, an AutoQuotes engineer can own `src/server/autoquotes/` and the API contract mapping, and a Foundry engineer can own `src/server/foundry.ts` and future server-side orchestration. Coordinate any shared `src/domain/` contract changes before wiring real providers.
