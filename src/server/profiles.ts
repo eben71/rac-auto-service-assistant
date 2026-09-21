@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Vehicle } from "../domain/models";
 import { profileVehicles } from "../domain/profile-fixtures";
+import { sameVehicleIdentity } from "../domain/booking";
 
 export interface DeveloperProfile {
   id: string;
@@ -99,17 +100,15 @@ export async function updateGarage(
   const vehicles = data.garages[profile.id] ?? [
     profileVehicles[Number(profile.id.at(-1)) - 1],
   ];
-  const key = (item: Vehicle) =>
-    item.vehicleId
-      ? `autoquotes:${item.vehicleId}`
-      : `${item.make.toLowerCase()}:${item.model.toLowerCase()}:${item.year ?? ""}`;
-  const existing = vehicles.some((item) => key(item) === key(vehicle));
+  const existing = vehicles.some((item) => sameVehicleIdentity(item, vehicle));
   data.garages[profile.id] =
     operation === "add"
       ? existing
-        ? vehicles.map((item) => (key(item) === key(vehicle) ? vehicle : item))
+        ? vehicles.map((item) =>
+            sameVehicleIdentity(item, vehicle) ? vehicle : item,
+          )
         : [...vehicles, vehicle]
-      : vehicles.filter((item) => key(item) !== key(vehicle));
+      : vehicles.filter((item) => !sameVehicleIdentity(item, vehicle));
   await save(data);
   return { ...profile, savedVehicles: data.garages[profile.id] };
 }

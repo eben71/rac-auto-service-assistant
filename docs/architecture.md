@@ -1,48 +1,45 @@
-# Task 004 architecture and limitations
+# Task 005 architecture and limitations
 
-## Identity, isolation, and local garage
+## Mock-only AutoQuotes boundary
 
-Unauthenticated customers are guests automatically. The initial screen still offers optional demonstration login, while the header presents only the Guest indicator and Sign in. Guest booking data stays in React memory and never writes to a developer garage.
+Registration lookup remains server-side through `POST /api/vehicles/lookup-by-rego`, but the active adapter is always `mockAutoQuotes`. There is no environment switch, credential configuration, live fallback or request to an AutoQuotes/ASQ host. The adapter interface remains so a separately reviewed real implementation can be added later.
 
-The server accepts one of three configured developer emails irrespective of password. The password input is not sent or stored. An unpredictable HTTP-only, same-site token selects an isolated profile. `.local-data/profiles.json` stores local demonstration sessions and garages and is ignored by Git. This store has no expiry, production authentication, concurrency guarantees, or real customer data.
+The deterministic registry contains DEMO1 through DEMO9. Matching is case-insensitive after trimming surrounding whitespace; unknown values return `not-found`. The historic `1GDU034` value aliases the single DEMO9 fixture for compatibility and does not duplicate its underlying record.
 
-Every successful login and sign-out resets the active booking boundary: customer draft, registration and make/model input, lookup candidates and errors, selected vehicle, services, schedule, workshop notes, image state, and assistant conversation. The new profile's saved garage is then loaded without modification. This also covers switching developers by signing out and signing in again.
+The supplied Mitsubishi `GetVehicleByRego` DTO and nested BYD vehicle-selection DTO are distinct Zod transport contracts. Both normalize into `Vehicle`. BYD `Model.Year = 0` is not used as a vehicle year. Supplied sample fields, synthetic identities and unavailable technical values are identified with `dataProvenance`. DEMO3–DEMO8 assert only the requested year, make, model and energy type; no AutoQuotes IDs, VINs, schedules or unsupported specifications are invented.
 
-Garage removal is keyed to the chosen vehicle, requires a native accessible dialog, focuses Cancel on open, supports Escape, and keeps the dialog open after an update failure. Successful feedback uses an `aria-live` status and a component-owned four-second timer that is cleared on replacement, identity change, and unmount.
+Main services, additional services and the DEMO9 schedule remain deterministic mock data. A missing MID results in an explicit schedule-unavailable state.
 
-## Vehicle model and customer additions
+## Active booking and identity isolation
 
-`Vehicle.year` remains the authoritative transport/profile value. `Vehicle.customerDetails` holds optional customer-provided `year`, `colour`, `odometerKm`, and `nickname`. The displayed effective year prefers the customer correction, while review retains and displays an ASQ discrepancy. Odometer validation accepts whole numbers from 0 through 2,000,000 km; it does not infer service requirements.
+The active booking is independent from a developer garage. Login and logout clear temporary registration/make-model input, candidates and lookup messages, but retain a confirmed vehicle and compatible vehicle-specific selections. The garage is loaded from the new identity only. Matching uses stable vehicle IDs first and a conservative make/model/year compatibility fallback for legacy illustrative garage records.
 
-ASQ records retain `VehicleID`, `MID`, make, model, year, type-derived fuel class, details, and source. Live records use `source: asq` and `demonstration: false`; the make/model fixture uses `autoquotes-mock`; profile fixtures retain `illustrative-profile`. Saving replaces the same garage record so additions can be updated without a duplicate. Guest additions stay in the booking draft only.
+A retained active vehicle is never automatically saved or transferred. If it already matches the current garage the UI reports it as saved; otherwise **Add to my vehicles** is explicit. Existing garage JSON is never reseeded merely because registry fixtures changed.
 
-## Assistant-first service selection
+Selecting a different vehicle clears main/additional services, schedule choice, workshop notes, assistant conversation and restores assistant-first mode. Editing customer metadata such as colour, odometer or nickname updates the selected vehicle without clearing compatible booking state. **Start a new booking** clears all active/transient booking state while preserving the authenticated profile and its garage.
 
-The service screen renders one accessible tab panel at a time. Auto Services Assistant is the default for every newly selected vehicle. It preserves the deterministic clarification, recommendation, cannot-match, workshop-note, and safety states. A prototype badge states that responses are demonstrations. Manual mode contains the normalized mock catalogue, additional-services path, and MID schedule selector. Switching panels preserves both conversation state and confirmed manual choices. Assistant recommendations remain separate until the customer explicitly adds a valid current-catalogue ID.
+Switching between registration and make/model lookup is treated as an explicit vehicle change: the active vehicle and vehicle-specific context are cleared before the newly selected lookup form is shown. Vehicle and service prompts use the guest first name with an initial capital when available, otherwise the similarly normalized first segment of the signed-in profile display name.
 
-Changing vehicle clears all vehicle-specific service and assistant context but leaves saved profile vehicles untouched.
+The active draft, step, assistant state and service-selection mode are validated and stored in tab-scoped `sessionStorage`. Refresh restores the active booking, leaves lookup results idle, reloads catalogue/image context and reconciles DEMO registrations against the current mock registry. The server session cookie independently restores the current developer. This is prototype persistence, not a durable or cross-device customer record.
 
-## ASQ vehicle lookup boundary
+## Developer profiles
 
-`src/server/asq/vehicle.ts` owns the live registration lookup. The booking journey calls `POST /api/vehicles/lookup-by-rego`, and that route calls `getVehicleByRegistration` directly. There is no registration-lookup provider switch or mock fallback.
+The three configured developer identities remain environment-driven. Password input is illustrative and is neither sent nor stored. An unpredictable HTTP-only same-site token selects one isolated garage in ignored local JSON storage. New garages are seeded with the Toyota RAV4, Toyota Camry or Tesla Model 3 demo fixture; existing garages are returned unchanged until the developer explicitly adds, edits or removes a vehicle.
 
-The ASQ client:
+No profile contact data is copied into the booking draft, so sign-out does not leave account-owned contact details behind. Production authentication, expiry, concurrency and customer-profile APIs remain outside scope.
 
-- requires the configured ASQ URL, endpoint, API key, Entra scope, managed-identity client ID, and correlation-header name;
-- accepts only HTTPS on the exact `api-uat.ractest.com.au` allowlist entry and rejects URL credentials;
-- acquires a bearer token with Azure Managed Identity;
-- constructs the configured `GetVehicleByRego` endpoint and encoded query server-side;
-- checks HTTP status and validates the complete envelope and each vehicle result;
-- distinguishes empty results, ambiguous results, unavailable responses, and timeouts;
-- returns generic customer messages without upstream details or secrets;
-- never falls back to demonstration vehicle data after a live failure.
+## Images
 
-No live request occurs at startup. Lookup requires the six ASQ variables documented in `.env.example`; live connectivity remains unverified until approved credentials are placed in ignored `.env.local` and an explicit end-to-end test is run. Make/model selection, service catalogues, and schedules remain deterministic fixtures and are not ASQ vehicle registration lookups.
+The AllBrands provider receives only fixture ID, make and model—never registration, VIN or customer data. It resolves any supported make/model rather than containing a nine-vehicle switch. Verified bundled illustrations cover the three seeded profile models. Catalogue misses, fetch failures and image-load failures use `public/vehicles/generic.svg` and never block progress. The UI retains AllBrands CC BY 4.0 attribution for representative artwork.
 
-## Images and attribution
+## Assistant and Foundry
 
-The approved logo is `public/brand/rac-for-the-better.png`. The AllBrands integration receives make and model only, never registration, VIN, name, or email. Three bundled profile illustrations are representative; unresolved vehicles use `public/vehicles/generic.svg`. The UI links CC BY 4.0 attribution.
+Assistant-first service selection remains the default, with manual selection available through the existing tabs. Safety escalation and human-assistance fallback remain in place. This task does not modify the Microsoft Foundry provider, configuration, prompts, route or shared response contracts. Foundry availability is independent from mock AutoQuotes operation.
 
-## Foundry and remaining integrations
+## Known limitations
 
-Task 004 does not modify Foundry prompts, configuration, orchestration, or shared AI response contracts. The current assistant remains deterministic. Main/additional catalogue and schedules are mocks. Production identity, real profiles, vehicle eligibility, pricing, workshop availability, quote calculation, and booking submission are outside scope.
+- No real registration, profile, catalogue, eligibility, pricing, availability or booking API is called.
+- DEMO1–DEMO8 have no manufacturer maintenance schedules; only the supplied DEMO9 mock schedule is exposed.
+- Session storage is tab-local and is not production persistence.
+- Vehicle artwork depends on AllBrands catalogue coverage and availability.
+- Quote calculation and booking submission are intentionally not implemented.

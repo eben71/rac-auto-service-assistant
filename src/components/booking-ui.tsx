@@ -38,6 +38,7 @@ export function BookingLayout({
   onSignIn,
   onVehicles,
   onSignOut,
+  onStartNewBooking,
 }: {
   step: BookingStep;
   children: ReactNode;
@@ -45,6 +46,7 @@ export function BookingLayout({
   onSignIn(): void;
   onVehicles(): void;
   onSignOut(): void;
+  onStartNewBooking(): void;
 }) {
   const current = activeIndex[step];
   return (
@@ -98,6 +100,15 @@ export function BookingLayout({
         >
           <summary>{profileName ?? "Guest"}</summary>
           <div className="profile-menu-actions">
+            <button
+              type="button"
+              onClick={(event) => {
+                event.currentTarget.closest("details")?.removeAttribute("open");
+                onStartNewBooking();
+              }}
+            >
+              Start a new booking
+            </button>
             {profileName ? (
               <>
                 <button
@@ -253,6 +264,9 @@ export function VehicleSummary({
         <span>
           {effectiveYear ?? "Year not provided"}
           {vehicle.registration ? ` · ${vehicle.registration}` : ""}
+          {vehicle.energyType
+            ? ` · ${vehicle.energyType[0].toUpperCase()}${vehicle.energyType.slice(1)}`
+            : ""}
         </span>
         {vehicle.details && <span>{vehicle.details}</span>}
         {(vehicle.customerDetails?.nickname ||
@@ -273,9 +287,9 @@ export function VehicleSummary({
         <small>
           {vehicle.source === "illustrative-profile"
             ? "Illustrative profile vehicle · vehicle-specific eligibility and schedules unavailable"
-            : vehicle.source === "asq"
-              ? "Vehicle supplied by ASQ · customer additions are shown separately"
-              : "Mock vehicle record · details beyond the fixture are unverified"}
+            : vehicle.dataProvenance?.technical === "supplied-sample"
+              ? "Mock vehicle · technical fields are from a supplied AutoQuotes sample"
+              : "Synthetic demo vehicle · unlisted technical details are unavailable"}
         </small>
       </div>
       {children}
