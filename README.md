@@ -33,12 +33,10 @@ npm run build
 
 ## AutoQuotes provider configuration
 
-Vehicle registration lookup and service data are selected independently. Safe defaults keep everything local:
+Only vehicle registration lookup has a configurable provider. Safe defaults keep everything local:
 
 ```dotenv
-AUTOQUOTES_PROVIDER=mock
 AUTOQUOTES_VEHICLE_PROVIDER=mock
-AUTOQUOTES_SERVICE_PROVIDER=mock
 ```
 
 To enable live registration lookup in an approved local test environment, set:
@@ -51,9 +49,9 @@ AUTOQUOTES_SUBSCRIPTION_KEY_HEADER=<verified gateway header name>
 AUTOQUOTES_TIMEOUT_MS=5000
 ```
 
-All values are server-only; do not use `NEXT_PUBLIC_`. The header name is deliberately required because it must be verified against the RAC gateway contract. The adapter accepts HTTPS on the allowlisted `ractest.com.au` host only, sends `GET /api/autoservicesbooking/GetVehicleByRego?registrationNumber=...`, validates the response envelope, normalizes the supplied vehicle DTO, and returns every candidate when more than one matches. Missing configuration, non-success responses, empty results, timeouts, and network failures have distinct safe outcomes. A live failure never falls back to the Pajero mock.
+All values are server-only; do not use `NEXT_PUBLIC_`. The header name is deliberately required because it must be verified against the RAC gateway contract. The adapter accepts HTTPS on the allowlisted `ractest.com.au` host only, sends `POST /api/autoservicesbooking/GetVehicleByRego?registrationNumber=...`, validates the response envelope, normalizes the supplied vehicle DTO, and returns every candidate when more than one matches. Missing configuration, non-success responses, empty results, timeouts, and network failures have distinct safe outcomes. A live failure never falls back to the Pajero mock.
 
-Only registration lookup can be live. Make/model lookup, main and additional service catalogues, and logbook schedules remain deterministic mocks. `AUTOQUOTES_SERVICE_PROVIDER` currently accepts only `mock`, which prevents a partial live configuration from changing those routes.
+Only registration lookup can be live. Make/model lookup, main and additional service catalogues, and logbook schedules remain deterministic mocks; they do not have provider environment variables.
 
 ### ASQ Auto Services Booking lookup
 

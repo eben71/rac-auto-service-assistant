@@ -26,7 +26,7 @@ Changing vehicle clears all vehicle-specific service and assistant context but l
 
 `src/server/autoquotes/vehicle-transport.ts` defines the supplied PascalCase vehicle DTO and envelope schema. Both mock and live registration providers normalize through this boundary.
 
-`AUTOQUOTES_VEHICLE_PROVIDER` independently selects `mock` or `live`. `AUTOQUOTES_SERVICE_PROVIDER` is constrained to `mock`; catalogue and schedule routes never use the live adapter. Make/model selection also uses the mock adapter. The legacy `AUTOQUOTES_PROVIDER` remains as a fallback for vehicle selection compatibility.
+`AUTOQUOTES_VEHICLE_PROVIDER` selects `mock` or `live` for registration-number lookup. Catalogue and schedule routes, as well as make/model selection, always use the mock adapter and have no provider environment variables.
 
 The live adapter:
 

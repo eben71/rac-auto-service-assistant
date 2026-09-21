@@ -55,7 +55,7 @@ export function createLiveRegistrationLookup(
       );
       url.searchParams.set("registrationNumber", normalizedRegistration);
       const response = await fetcher(url, {
-        method: "GET",
+        method: "POST",
         headers: {
           [configuration.header]: configuration.key,
           Accept: "application/json",
