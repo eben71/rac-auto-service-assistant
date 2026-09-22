@@ -57,6 +57,17 @@ async function postJson(path: string, payload: unknown): Promise<unknown> {
 }
 
 const bookingStorageKey = "rac-demo-active-booking-v1";
+const tabSessionIdKey = "rac-demo-tab-session-id-v1";
+
+function initializeTabSession(): boolean {
+  if (!window.sessionStorage.getItem(tabSessionIdKey)) {
+    // First time in this tab - generate a unique ID
+    const tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    window.sessionStorage.setItem(tabSessionIdKey, tabId);
+    return false; // Tab is fresh, not previously initialized
+  }
+  return true; // Tab was previously initialized
+}
 
 export function BookingJourney() {
   const [step, setStep] = useState<BookingStep>("begin");
@@ -180,8 +191,14 @@ export function BookingJourney() {
     const navigation = performance.getEntriesByType(
       "navigation",
     )[0] as PerformanceNavigationTiming | undefined;
+
+    // Check if this tab is initialized or if it's a reload
+    const isTabInitialized = initializeTabSession();
+    const isPageReload = navigation?.type === "reload";
+
+    // Only restore persisted session on page reload (same tab, browser back/refresh)
     const persisted =
-      navigation?.type === "reload"
+      isPageReload
         ? parseBookingSession(
             window.sessionStorage.getItem(bookingStorageKey) ?? "",
           )
@@ -241,10 +258,15 @@ export function BookingJourney() {
       .then((response) => response.json())
       .then((data: { profile: DeveloperProfile | null }) => {
         if (generation === sessionGeneration.current) setProfile(data.profile);
+        // Only auto-advance to vehicle step if:
+        // 1. There's a profile logged in, AND
+        // 2. There's no persisted booking, AND
+        // 3. This tab is already initialized (not a fresh new tab)
         if (
           generation === sessionGeneration.current &&
           data.profile &&
-          !persisted?.draft.vehicle
+          !persisted?.draft.vehicle &&
+          isTabInitialized
         ) {
           setShowSaved(true);
           setStep("vehicle");
