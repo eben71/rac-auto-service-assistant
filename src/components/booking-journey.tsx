@@ -207,6 +207,12 @@ export function BookingJourney() {
     if (!persisted) {
       window.sessionStorage.removeItem(bookingStorageKey);
     }
+
+    // If this is a fresh tab, clear any existing session cookie
+    if (!isTabInitialized) {
+      void fetch("/api/demo-session", { method: "DELETE" });
+    }
+
     queueMicrotask(() => {
       if (persisted) {
         setDraft(persisted.draft);
