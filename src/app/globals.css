@@ -1010,14 +1010,15 @@ textarea.input {
 .review-block li {
   font-size: 17px;
   line-height: 1.5;
-  text-align: left;
 }
 .review-block p,
 .review-block ul {
   margin: 0;
 }
 .review-block ul {
-  padding-left: 23px;
+  text-align: left;
+  list-style: disc;
+  padding-left: 22px;
 }
 .review-block li + li {
   margin-top: 7px;
