@@ -18,13 +18,34 @@ export const vehicleSchema = z.object({
   model: z.string().min(1),
   registration: z.string().optional(),
   fuel: z.enum(["petrol-diesel", "electric", "unknown"]),
+  energyType: z
+    .enum(["petrol", "diesel", "hybrid", "electric", "unknown"])
+    .optional(),
+  variant: z.string().optional(),
   demonstration: z.boolean(),
   vehicleId: z.string().optional(),
   mid: z.string().optional(),
   details: z.string().optional(),
+  technicalDetails: z
+    .object({
+      engine: z.string().optional(),
+      capacity: z.string().optional(),
+      powerKw: z.string().optional(),
+    })
+    .optional(),
+  dataProvenance: z
+    .object({
+      identity: z.enum([
+        "supplied-sample",
+        "synthetic-demo",
+        "illustrative-profile",
+      ]),
+      technical: z.enum(["supplied-sample", "verified-generic", "unavailable"]),
+    })
+    .optional(),
   source: z
     .enum([
-      "autoquotes-live",
+      "asq",
       "autoquotes-mock",
       "illustrative-profile",
       "synthetic-lookup",

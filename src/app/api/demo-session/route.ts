@@ -18,7 +18,10 @@ export async function POST(request: Request) {
   const token = await signIn(email);
   if (!token)
     return NextResponse.json(
-      { message: "Unable to sign in with that email." },
+      {
+        message:
+          "That email is not a configured demo profile. Restart the development server after changing .env.local.",
+      },
       { status: 401 },
     );
   const response = NextResponse.json({ profile: await profileForToken(token) });

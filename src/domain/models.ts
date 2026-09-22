@@ -10,15 +10,23 @@ export interface Vehicle {
   model: string;
   registration?: string;
   fuel: "petrol-diesel" | "electric" | "unknown";
+  energyType?: "petrol" | "diesel" | "hybrid" | "electric" | "unknown";
+  variant?: string;
   demonstration: boolean;
   vehicleId?: string;
   mid?: string;
   details?: string;
+  technicalDetails?: {
+    engine?: string;
+    capacity?: string;
+    powerKw?: string;
+  };
+  dataProvenance?: {
+    identity: "supplied-sample" | "synthetic-demo" | "illustrative-profile";
+    technical: "supplied-sample" | "verified-generic" | "unavailable";
+  };
   source?:
-    | "autoquotes-live"
-    | "autoquotes-mock"
-    | "illustrative-profile"
-    | "synthetic-lookup";
+    "asq" | "autoquotes-mock" | "illustrative-profile" | "synthetic-lookup";
   customerDetails?: VehicleCustomerDetails;
 }
 export interface VehicleCustomerDetails {

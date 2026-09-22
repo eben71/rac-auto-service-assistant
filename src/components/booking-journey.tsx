@@ -12,6 +12,7 @@ import {
   initialDraft,
   nextStep,
   previousStep,
+  sameVehicleIdentity,
   selectable,
   selectServiceId,
 } from "@/domain/booking";
@@ -21,6 +22,7 @@ import {
   vehicleDetailsInputSchema,
   vehicleResponseSchema,
 } from "@/domain/schemas";
+import { parseBookingSession } from "@/domain/booking-session";
 import {
   BookingLayout,
   PageHeading,
@@ -46,8 +48,26 @@ async function postJson(path: string, payload: unknown): Promise<unknown> {
     body: JSON.stringify(payload),
   });
   const body: unknown = await response.json();
-  if (!response.ok) throw new Error("The service is unavailable.");
+  if (!response.ok) {
+    const message = (body as { message?: unknown })?.message;
+    throw new Error(
+      typeof message === "string" ? message : "The service is unavailable.",
+    );
+  }
   return body;
+}
+
+const bookingStorageKey = "rac-demo-active-booking-v1";
+const tabSessionIdKey = "rac-demo-tab-session-id-v1";
+
+function initializeTabSession(): boolean {
+  if (!window.sessionStorage.getItem(tabSessionIdKey)) {
+    // First time in this tab - generate a unique ID
+    const tabId = `tab-${Date.now()}-${Math.random().toString(36).substring(7)}`;
+    window.sessionStorage.setItem(tabSessionIdKey, tabId);
+    return false; // Tab is fresh, not previously initialized
+  }
+  return true; // Tab was previously initialized
 }
 
 export function BookingJourney() {
@@ -103,9 +123,12 @@ export function BookingJourney() {
   const [vehicleDetailErrors, setVehicleDetailErrors] = useState<
     Record<string, string>
   >({});
+  const [vehicleDetailsOpen, setVehicleDetailsOpen] = useState(false);
   const manualRef = useRef<HTMLHeadingElement>(null);
   const assistantNavigationRef = useRef(false);
   const sessionGeneration = useRef(0);
+  const stepBeforeLogin = useRef<BookingStep>("begin");
+  const [bookingRestored, setBookingRestored] = useState(false);
 
   useEffect(() => () => window.clearTimeout(garageTimer.current), []);
   useEffect(() => {
@@ -143,18 +166,115 @@ export function BookingJourney() {
     setServiceMode("assistant");
     setVehicleDetails({ year: "", colour: "", odometerKm: "", nickname: "" });
     setVehicleDetailErrors({});
+    setVehicleDetailsOpen(false);
     setShowSaved(savedVehiclesVisible);
     setRemovalCandidate(null);
     dismissGarageMessage();
   }
 
+  function clearTemporaryLookup() {
+    setRegistration("");
+    setMake("");
+    setModel("");
+    setVehicleCandidates([]);
+    setLookupStatus("idle");
+    setLookupMessage("");
+  }
+
+  function openSignIn() {
+    stepBeforeLogin.current = step;
+    setLoginError("");
+    setLoginOpen(true);
+    setStep("begin");
+  }
+
   useEffect(() => {
+    const navigation = performance.getEntriesByType(
+      "navigation",
+    )[0] as PerformanceNavigationTiming | undefined;
+
+    // Check if this tab is initialized or if it's a reload
+    const isTabInitialized = initializeTabSession();
+    const isPageReload = navigation?.type === "reload";
+
+    // Only restore persisted session on page reload (same tab, browser back/refresh)
+    const persisted =
+      isPageReload
+        ? parseBookingSession(
+            window.sessionStorage.getItem(bookingStorageKey) ?? "",
+          )
+        : null;
+
+    if (!persisted) {
+      window.sessionStorage.removeItem(bookingStorageKey);
+    }
+
+    // If this is a fresh tab, clear any existing session cookie
+    if (!isTabInitialized) {
+      void fetch("/api/demo-session", { method: "DELETE" });
+    }
+
+    queueMicrotask(() => {
+      if (persisted) {
+        setDraft(persisted.draft);
+        setStep(persisted.step);
+        setAssistant(persisted.assistant);
+        setServiceMode(persisted.serviceMode);
+        const vehicle = persisted.draft.vehicle;
+        if (vehicle) {
+          setShowSaved(false);
+          setVehicleDetails({
+            year: String(vehicle.customerDetails?.year ?? vehicle.year ?? ""),
+            colour: vehicle.customerDetails?.colour ?? "",
+            odometerKm:
+              vehicle.customerDetails?.odometerKm === undefined
+                ? ""
+                : String(vehicle.customerDetails.odometerKm),
+            nickname: vehicle.customerDetails?.nickname ?? "",
+          });
+          if (vehicle.registration?.startsWith("DEMO")) {
+            void postJson("/api/vehicles/lookup-by-rego", {
+              registrationNumber: vehicle.registration,
+            })
+              .then((value) => vehicleResponseSchema.parse(value))
+              .then((result) => {
+                if (result.status !== "found") return;
+                setDraft((current) =>
+                  current.vehicle &&
+                  sameVehicleIdentity(current.vehicle, result.vehicle)
+                    ? {
+                        ...current,
+                        vehicle: {
+                          ...result.vehicle,
+                          customerDetails: current.vehicle.customerDetails,
+                        },
+                      }
+                    : current,
+                );
+              })
+              .catch(() => {
+                // Keep the validated local draft; lookup remains an explicit action.
+              });
+          }
+        }
+      }
+      setBookingRestored(true);
+    });
     const generation = sessionGeneration.current;
     fetch("/api/demo-session")
       .then((response) => response.json())
       .then((data: { profile: DeveloperProfile | null }) => {
         if (generation === sessionGeneration.current) setProfile(data.profile);
-        if (generation === sessionGeneration.current && data.profile) {
+        // Only auto-advance to vehicle step if:
+        // 1. There's a profile logged in, AND
+        // 2. There's no persisted booking, AND
+        // 3. This tab is already initialized (not a fresh new tab)
+        if (
+          generation === sessionGeneration.current &&
+          data.profile &&
+          !persisted?.draft.vehicle &&
+          isTabInitialized
+        ) {
           setShowSaved(true);
           setStep("vehicle");
         }
@@ -162,6 +282,14 @@ export function BookingJourney() {
       })
       .catch(() => setSessionReady(true));
   }, []);
+
+  useEffect(() => {
+    if (!bookingRestored) return;
+    window.sessionStorage.setItem(
+      bookingStorageKey,
+      JSON.stringify({ version: 1, step, draft, assistant, serviceMode }),
+    );
+  }, [assistant, bookingRestored, draft, serviceMode, step]);
 
   useEffect(() => {
     if (!draft.vehicle) return;
@@ -210,13 +338,19 @@ export function BookingJourney() {
         email: loginEmail.trim(),
       });
       sessionGeneration.current++;
-      setProfile((data as { profile: DeveloperProfile }).profile);
+      const nextProfile = (data as { profile: DeveloperProfile }).profile;
+      setProfile(nextProfile);
       setPassword("");
       setLoginOpen(false);
-      resetActiveBooking(true);
+      clearTemporaryLookup();
+      setShowSaved(!draft.vehicle);
       setStep("vehicle");
-    } catch {
-      setLoginError("Unable to sign in with that email.");
+    } catch (error) {
+      setLoginError(
+        error instanceof Error
+          ? error.message
+          : "Unable to sign in with that email.",
+      );
     }
   }
   async function signOut() {
@@ -224,24 +358,32 @@ export function BookingJourney() {
     await fetch("/api/demo-session", { method: "DELETE" });
     setProfile(null);
     setLoginOpen(false);
-    resetActiveBooking(false);
-    setStep("begin");
+    clearTemporaryLookup();
+    setShowSaved(false);
+    setStep(draft.vehicle ? "vehicle" : "begin");
   }
-  async function manageVehicle(operation: "add" | "remove", vehicle: Vehicle) {
+  async function manageVehicle(
+    operation: "add" | "remove",
+    vehicle: Vehicle,
+    successMessage?: string,
+  ): Promise<boolean> {
     try {
       const data = await postJson("/api/my-vehicles", { operation, vehicle });
       setProfile((data as { profile: DeveloperProfile }).profile);
       notifyGarage(
-        operation === "add"
-          ? "Vehicle added to My vehicles."
-          : "Vehicle removed from My vehicles.",
+        successMessage ??
+          (operation === "add"
+            ? "Vehicle added to My vehicles."
+            : "Vehicle removed from My vehicles."),
       );
       if (operation === "remove") {
         removalDialogRef.current?.close();
         setRemovalCandidate(null);
       }
+      return true;
     } catch {
       notifyGarage("Could not update My vehicles. Please try again.");
+      return false;
     }
   }
   function selectVehicle(vehicle: Vehicle) {
@@ -249,24 +391,23 @@ export function BookingJourney() {
     setVehicleImage(null);
     setSchedules([]);
     setScheduleStatus("idle");
+    const sameVehicle =
+      !!draft.vehicle && sameVehicleIdentity(draft.vehicle, vehicle);
     setDraft((current) => ({
       ...current,
       vehicle,
-      mainServiceId:
-        current.vehicle?.id === vehicle.id ? current.mainServiceId : null,
-      additionalServiceIds:
-        current.vehicle?.id === vehicle.id ? current.additionalServiceIds : [],
-      workshopNotes:
-        current.vehicle?.id === vehicle.id ? current.workshopNotes : [],
-      serviceScheduleId:
-        current.vehicle?.id === vehicle.id ? current.serviceScheduleId : null,
+      mainServiceId: sameVehicle ? current.mainServiceId : null,
+      additionalServiceIds: sameVehicle ? current.additionalServiceIds : [],
+      workshopNotes: sameVehicle ? current.workshopNotes : [],
+      serviceScheduleId: sameVehicle ? current.serviceScheduleId : null,
     }));
-    setAssistant({ kind: "idle" });
-    setServiceMode("assistant");
+    if (!sameVehicle) {
+      setAssistant({ kind: "idle" });
+      setAssistantExpanded(false);
+      setServiceMode("assistant");
+    }
     setVehicleDetails({
-      year: vehicle.customerDetails?.year
-        ? String(vehicle.customerDetails.year)
-        : "",
+      year: String(vehicle.customerDetails?.year ?? vehicle.year ?? ""),
       colour: vehicle.customerDetails?.colour ?? "",
       odometerKm:
         vehicle.customerDetails?.odometerKm !== undefined
@@ -275,6 +416,7 @@ export function BookingJourney() {
       nickname: vehicle.customerDetails?.nickname ?? "",
     });
     setVehicleDetailErrors({});
+    setVehicleDetailsOpen(false);
     setCatalogue([]);
     setCatalogueStatus("loading");
     setLookupStatus("idle");
@@ -308,6 +450,30 @@ export function BookingJourney() {
         if (!cancelled) {
           setCatalogue(data.items);
           setCatalogueStatus("ready");
+          setDraft((current) => {
+            const validMain = current.mainServiceId
+              ? data.items.some(
+                  (item) =>
+                    item.id === current.mainServiceId &&
+                    item.category === "main" &&
+                    selectable(item, current.vehicle),
+                )
+              : true;
+            return {
+              ...current,
+              mainServiceId: validMain ? current.mainServiceId : null,
+              additionalServiceIds: current.additionalServiceIds.filter((id) =>
+                data.items.some(
+                  (item) =>
+                    item.id === id &&
+                    item.category === "additional" &&
+                    selectable(item, current.vehicle),
+                ),
+              ),
+              workshopNotes: validMain ? current.workshopNotes : [],
+              serviceScheduleId: validMain ? current.serviceScheduleId : null,
+            };
+          });
         }
       })
       .catch(() => {
@@ -355,9 +521,13 @@ export function BookingJourney() {
     setLookupStatus("loading");
     try {
       const path =
-        mode === "registration" ? "/api/vehicles" : "/api/vehicles/make-model";
+        mode === "registration"
+          ? "/api/vehicles/lookup-by-rego"
+          : "/api/vehicles/make-model";
       const payload =
-        mode === "registration" ? { registration } : { make, model };
+        mode === "registration"
+          ? { registrationNumber: registration }
+          : { make, model };
       const result = vehicleResponseSchema.parse(await postJson(path, payload));
       if (result.status === "found") {
         selectVehicle(result.vehicle);
@@ -376,7 +546,7 @@ export function BookingJourney() {
     }
   }
 
-  function changeVehicle() {
+  function changeVehicle(showGarage = !!profile) {
     dismissGarageMessage();
     setVehicleImage(null);
     setSchedules([]);
@@ -397,14 +567,24 @@ export function BookingJourney() {
     setVehicleCandidates([]);
     setVehicleDetails({ year: "", colour: "", odometerKm: "", nickname: "" });
     setVehicleDetailErrors({});
+    setVehicleDetailsOpen(false);
     setServiceMode("assistant");
-    setShowSaved(!!profile);
+    setShowSaved(showGarage);
+  }
+
+  function selectLookupMode(nextMode: "registration" | "make-model") {
+    if (nextMode === mode) return;
+    if (draft.vehicle) changeVehicle(false);
+    clearTemporaryLookup();
+    setShowSaved(false);
+    setMode(nextMode);
   }
 
   function vehicleWithCustomerDetails(): Vehicle | null {
     if (!draft.vehicle) return null;
     const parsed = vehicleDetailsInputSchema.safeParse(vehicleDetails);
     if (!parsed.success) {
+      setVehicleDetailsOpen(true);
       setVehicleDetailErrors(
         Object.fromEntries(
           parsed.error.issues.map((issue) => [
@@ -416,8 +596,12 @@ export function BookingJourney() {
       return null;
     }
     setVehicleDetailErrors({});
+    const enteredYear = parsed.data.year === "" ? undefined : parsed.data.year;
     const customerDetails = {
-      year: parsed.data.year === "" ? undefined : parsed.data.year,
+      year:
+        draft.vehicle.year !== undefined && enteredYear === draft.vehicle.year
+          ? undefined
+          : enteredYear,
       colour: parsed.data.colour || undefined,
       odometerKm:
         parsed.data.odometerKm === "" ? undefined : parsed.data.odometerKm,
@@ -433,13 +617,28 @@ export function BookingJourney() {
     if (vehicle) await manageVehicle("add", vehicle);
   }
 
-  async function continueWithVehicle() {
+  async function saveVehicleDetails() {
     const vehicle = vehicleWithCustomerDetails();
     if (!vehicle) return;
-    const alreadySaved = profile?.savedVehicles.some(
-      (item) => item.id === vehicle.id,
+    const alreadySaved = !!profile?.savedVehicles.some((item) =>
+      sameVehicleIdentity(item, vehicle),
     );
-    if (alreadySaved) await manageVehicle("add", vehicle);
+    if (alreadySaved) {
+      const saved = await manageVehicle(
+        "add",
+        vehicle,
+        "Vehicle details saved.",
+      );
+      if (!saved) return;
+    } else {
+      notifyGarage("Vehicle details saved for this booking.");
+    }
+    setVehicleDetailsOpen(false);
+  }
+
+  function continueWithVehicle() {
+    const vehicle = vehicleWithCustomerDetails();
+    if (!vehicle) return;
     setStep(nextStep(step));
   }
 
@@ -542,31 +741,39 @@ export function BookingJourney() {
   const activeVehicleSaved = !!(
     profile &&
     draft.vehicle &&
-    profile.savedVehicles.some((vehicle) => vehicle.id === draft.vehicle?.id)
+    profile.savedVehicles.some((vehicle) =>
+      sameVehicleIdentity(vehicle, draft.vehicle as Vehicle),
+    )
   );
+  const rawPersonalName = (profile?.displayName || draft.customer.firstName)
+    .trim()
+    .split(/\s+/)[0];
+  const personalName = rawPersonalName
+    ? `${rawPersonalName[0].toUpperCase()}${rawPersonalName.slice(1).toLowerCase()}`
+    : "";
 
   return (
     <BookingLayout
       step={step}
       profileName={profile?.displayName}
-      onSignIn={() => {
-        setLoginOpen(true);
-        setStep("begin");
-      }}
+      onSignIn={openSignIn}
       onVehicles={() => {
         dismissGarageMessage();
         setShowSaved(true);
         setStep("vehicle");
       }}
       onSignOut={signOut}
+      onStartNewBooking={() => {
+        resetActiveBooking(!!profile);
+        setStep(profile ? "vehicle" : "begin");
+      }}
     >
       {step === "begin" && (
         <section aria-labelledby="begin-title">
           <div className="entry-actions">
             <TextButton
               onClick={() => {
-                setLoginOpen(true);
-                setLoginError("");
+                openSignIn();
               }}
             >
               Sign in
@@ -595,7 +802,12 @@ export function BookingJourney() {
               />
               <PrimaryButton onClick={signIn}>Sign in</PrimaryButton>
               <div className="back-row">
-                <TextButton onClick={() => setLoginOpen(false)}>
+                <TextButton
+                  onClick={() => {
+                    setLoginOpen(false);
+                    setStep(stepBeforeLogin.current);
+                  }}
+                >
                   Continue as guest
                 </TextButton>
               </div>
@@ -665,7 +877,15 @@ export function BookingJourney() {
             title={
               profile ? "Which vehicle are we servicing?" : "Vehicle details"
             }
-            question={profile ? undefined : "What do you drive?"}
+            question={
+              personalName
+                ? profile
+                  ? `Hi ${personalName}, which vehicle are we servicing?`
+                  : `Hi ${personalName}, what do you drive?`
+                : profile
+                  ? undefined
+                  : "What do you drive?"
+            }
             description="Tell us about your car so we can show demonstration service options. You can change it later."
           />
           {sessionReady && profile && showSaved && (
@@ -683,7 +903,7 @@ export function BookingJourney() {
                         {(vehicle.customerDetails?.year ?? vehicle.year)
                           ? `${vehicle.customerDetails?.year ?? vehicle.year} · `
                           : ""}
-                        {vehicle.registration ?? "Illustrative profile vehicle"}
+                        {vehicle.registration ?? "Synthetic demo vehicle"}
                       </p>
                       {vehicle.details && <p>{vehicle.details}</p>}
                       {vehicle.customerDetails && (
@@ -738,10 +958,7 @@ export function BookingJourney() {
                   role="tab"
                   aria-selected={mode === "registration"}
                   className={mode === "registration" ? "selected" : ""}
-                  onClick={() => {
-                    setMode("registration");
-                    setLookupStatus("idle");
-                  }}
+                  onClick={() => selectLookupMode("registration")}
                 >
                   By registration
                 </button>
@@ -749,10 +966,7 @@ export function BookingJourney() {
                   role="tab"
                   aria-selected={mode === "make-model"}
                   className={mode === "make-model" ? "selected" : ""}
-                  onClick={() => {
-                    setMode("make-model");
-                    setLookupStatus("idle");
-                  }}
+                  onClick={() => selectLookupMode("make-model")}
                 >
                   By make &amp; model
                 </button>
@@ -763,95 +977,116 @@ export function BookingJourney() {
                   image={vehicleImage}
                   onChange={changeVehicle}
                 >
-                  <div className="vehicle-detail-editor">
-                    <h4>Add vehicle details</h4>
-                    {draft.vehicle.year && (
-                      <p className="source-note">
-                        AutoQuotes supplied year:{" "}
-                        <strong>{draft.vehicle.year}</strong>. Enter a different
-                        year only to record a customer correction.
-                      </p>
+                  <div className="vehicle-details-accordion">
+                    <button
+                      id="vehicle-details-toggle"
+                      type="button"
+                      className="vehicle-detail-toggle"
+                      aria-expanded={vehicleDetailsOpen}
+                      aria-controls="vehicle-details-panel"
+                      onClick={() => {
+                        dismissGarageMessage();
+                        setVehicleDetailsOpen((current) => !current);
+                      }}
+                    >
+                      <span>Edit vehicle details</span>
+                      <span aria-hidden="true">
+                        {vehicleDetailsOpen ? "−" : "+"}
+                      </span>
+                    </button>
+                    {vehicleDetailsOpen && (
+                      <div
+                        id="vehicle-details-panel"
+                        className="vehicle-detail-editor"
+                        role="region"
+                        aria-labelledby="vehicle-details-toggle"
+                      >
+                        {draft.vehicle.year && (
+                          <p className="source-note">
+                            Fixture year: <strong>{draft.vehicle.year}</strong>.
+                            Change it only to record a customer correction; the
+                            fixture value will be retained.
+                          </p>
+                        )}
+                        <div className="vehicle-detail-grid">
+                          <TextField
+                            id="vehicle-year"
+                            label="Vehicle year"
+                            value={vehicleDetails.year}
+                            onChange={(year) =>
+                              setVehicleDetails((current) => ({
+                                ...current,
+                                year,
+                              }))
+                            }
+                            error={vehicleDetailErrors.year}
+                            placeholder="e.g. 2020"
+                          />
+                          <TextField
+                            id="vehicle-colour"
+                            label="Colour (optional)"
+                            value={vehicleDetails.colour}
+                            onChange={(colour) =>
+                              setVehicleDetails((current) => ({
+                                ...current,
+                                colour,
+                              }))
+                            }
+                            error={vehicleDetailErrors.colour}
+                            placeholder="e.g. Silver"
+                          />
+                          <TextField
+                            id="vehicle-odometer"
+                            label="Odometer in km (optional)"
+                            type="number"
+                            value={vehicleDetails.odometerKm}
+                            onChange={(odometerKm) =>
+                              setVehicleDetails((current) => ({
+                                ...current,
+                                odometerKm,
+                              }))
+                            }
+                            error={vehicleDetailErrors.odometerKm}
+                            placeholder="e.g. 85000"
+                          />
+                          <TextField
+                            id="vehicle-nickname"
+                            label="Nickname (optional)"
+                            value={vehicleDetails.nickname}
+                            onChange={(nickname) =>
+                              setVehicleDetails((current) => ({
+                                ...current,
+                                nickname,
+                              }))
+                            }
+                            error={vehicleDetailErrors.nickname}
+                            placeholder="e.g. Family car"
+                          />
+                        </div>
+                        {draft.vehicle.year &&
+                          vehicleDetails.year &&
+                          Number(vehicleDetails.year) !==
+                            draft.vehicle.year && (
+                            <p className="discrepancy-note">
+                              Customer year differs from the ASQ year. Both
+                              values will be retained for review.
+                            </p>
+                          )}
+                        <TextButton
+                          className="vehicle-detail-save"
+                          onClick={saveVehicleDetails}
+                        >
+                          Save vehicle details
+                        </TextButton>
+                      </div>
                     )}
-                    <div className="vehicle-detail-grid">
-                      <TextField
-                        id="vehicle-year"
-                        label={
-                          draft.vehicle.year
-                            ? "Customer year correction (optional)"
-                            : "Vehicle year"
-                        }
-                        value={vehicleDetails.year}
-                        onChange={(year) =>
-                          setVehicleDetails((current) => ({ ...current, year }))
-                        }
-                        error={vehicleDetailErrors.year}
-                        placeholder={
-                          draft.vehicle.year
-                            ? String(draft.vehicle.year)
-                            : "e.g. 2020"
-                        }
-                      />
-                      <TextField
-                        id="vehicle-colour"
-                        label="Colour (optional)"
-                        value={vehicleDetails.colour}
-                        onChange={(colour) =>
-                          setVehicleDetails((current) => ({
-                            ...current,
-                            colour,
-                          }))
-                        }
-                        error={vehicleDetailErrors.colour}
-                        placeholder="e.g. Silver"
-                      />
-                      <TextField
-                        id="vehicle-odometer"
-                        label="Odometer in km (optional)"
-                        type="number"
-                        value={vehicleDetails.odometerKm}
-                        onChange={(odometerKm) =>
-                          setVehicleDetails((current) => ({
-                            ...current,
-                            odometerKm,
-                          }))
-                        }
-                        error={vehicleDetailErrors.odometerKm}
-                        placeholder="e.g. 85000"
-                      />
-                      <TextField
-                        id="vehicle-nickname"
-                        label="Nickname (optional)"
-                        value={vehicleDetails.nickname}
-                        onChange={(nickname) =>
-                          setVehicleDetails((current) => ({
-                            ...current,
-                            nickname,
-                          }))
-                        }
-                        error={vehicleDetailErrors.nickname}
-                        placeholder="e.g. Family car"
-                      />
-                    </div>
-                    {draft.vehicle.year &&
-                      vehicleDetails.year &&
-                      Number(vehicleDetails.year) !== draft.vehicle.year && (
-                        <p className="discrepancy-note">
-                          Customer year differs from the AutoQuotes year. Both
-                          values will be retained for review.
-                        </p>
-                      )}
                   </div>
                   <div className="vehicle-card-actions">
                     {profile &&
                       (activeVehicleSaved ? (
-                        <>
-                          <span className="saved-state">
-                            ✓ Saved to my vehicles
-                          </span>
-                          <TextButton onClick={saveActiveVehicle}>
-                            Update saved details
-                          </TextButton>
-                        </>
+                        <span className="saved-state">
+                          ✓ Saved to my vehicles
+                        </span>
                       ) : (
                         <TextButton
                           className="save-vehicle-action"
@@ -874,7 +1109,6 @@ export function BookingJourney() {
                     <TextField
                       id="registration"
                       label="Registration"
-                      placeholder="Try 1GDU034"
                       value={registration}
                       onChange={setRegistration}
                     />
@@ -892,9 +1126,13 @@ export function BookingJourney() {
                           }}
                         >
                           <option value="">Select make</option>
+                          <option>BYD</option>
+                          <option>Ford</option>
+                          <option>Hyundai</option>
+                          <option>Mazda</option>
                           <option>Mitsubishi</option>
+                          <option>Tesla</option>
                           <option>Toyota</option>
-                          <option>Nissan</option>
                         </select>
                       </label>
                       <label className="field" htmlFor="model">
@@ -906,11 +1144,20 @@ export function BookingJourney() {
                           onChange={(event) => setModel(event.target.value)}
                         >
                           <option value="">Select model</option>
+                          {make === "BYD" && <option>Dolphin</option>}
+                          {make === "Ford" && <option>Ranger</option>}
+                          {make === "Hyundai" && <option>i30</option>}
+                          {make === "Mazda" && <option>CX-5</option>}
                           {make === "Mitsubishi" && (
                             <option>Pajero Sport</option>
                           )}
-                          {make === "Toyota" && <option>Corolla</option>}
-                          {make === "Nissan" && <option>Leaf</option>}
+                          {make === "Tesla" && <option>Model 3</option>}
+                          {make === "Toyota" && (
+                            <>
+                              <option>RAV4</option>
+                              <option>Camry</option>
+                            </>
+                          )}
                         </select>
                       </label>
                     </div>
@@ -978,8 +1225,8 @@ export function BookingJourney() {
             </TextButton>
           </div>
           <p className="demo-footnote">
-            Registration lookup uses the server-side provider configured for
-            this environment. Make and model selection remains synthetic.
+            Registration lookup and make/model selection use deterministic,
+            synthetic demonstration data only. Try DEMO1 through DEMO9.
           </p>
         </section>
       )}
@@ -989,7 +1236,7 @@ export function BookingJourney() {
           <PageHeading
             id="services-title"
             title="Service selection"
-            question={`What does your ${draft.vehicle?.make.toUpperCase() ?? "VEHICLE"} ${draft.vehicle?.model.toUpperCase() ?? ""} need?`}
+            question={`${personalName ? `${personalName}, what` : "What"} does your ${draft.vehicle?.make.toUpperCase() ?? "VEHICLE"} ${draft.vehicle?.model.toUpperCase() ?? ""} need?`}
             description="Use the Auto Services Assistant or choose a service yourself."
           />
           {draft.vehicle && (
@@ -1137,7 +1384,8 @@ export function BookingJourney() {
               )}
               <p className="demo-footnote">
                 These are synthetic catalogue fixtures. Vehicle-specific
-                applicability, inclusions and pricing await AutoQuotes records.
+                applicability, inclusions and pricing await approved service
+                records.
               </p>
             </div>
           )}
@@ -1225,17 +1473,14 @@ export function BookingJourney() {
               {draft.vehicle?.customerDetails?.year ??
                 draft.vehicle?.year ??
                 "Year not provided"}{" "}
-              {draft.vehicle?.make} {draft.vehicle?.model} ·{" "}
-              {draft.vehicle?.source === "autoquotes-live"
-                ? "AutoQuotes lookup with customer additions"
-                : "Demonstration data"}
+              {draft.vehicle?.make} {draft.vehicle?.model} · Demonstration data
             </p>
             {draft.vehicle?.year &&
               draft.vehicle.customerDetails?.year &&
               draft.vehicle.year !== draft.vehicle.customerDetails.year && (
                 <p>
                   Customer supplied year {draft.vehicle.customerDetails.year};
-                  AutoQuotes supplied {draft.vehicle.year}. Confirm with the
+                  fixture supplied {draft.vehicle.year}. Confirm with the
                   workshop.
                 </p>
               )}
@@ -1288,7 +1533,7 @@ export function BookingJourney() {
           )}
           <p className="demo-footnote">
             Prices, vehicle applicability and workshop availability have not
-            been retrieved from AutoQuotes.
+            been retrieved from the service catalogue.
           </p>
           <div className="back-row">
             <TextButton onClick={() => setStep(previousStep(step))}>

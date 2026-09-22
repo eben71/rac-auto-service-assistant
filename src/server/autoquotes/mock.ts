@@ -2,7 +2,9 @@ import type { AutoQuotesAdapter } from "./contracts";
 import type { ServiceItem, Vehicle } from "../../domain/models";
 import {
   normalizeVehicle,
+  normalizeVehicleSelection,
   type AutoQuotesVehicleDto,
+  type AutoQuotesVehicleSelectionDto,
 } from "./vehicle-transport";
 
 export interface AutoQuotesResponse<T> {
@@ -57,32 +59,132 @@ export const vehicleLookupDto: AutoQuotesResponse<AutoQuotesVehicleDto[]> = {
 };
 export { normalizeVehicle } from "./vehicle-transport";
 export type { AutoQuotesVehicleDto } from "./vehicle-transport";
-export const demoVehicle = normalizeVehicle(
+
+export const bydDynamicDto: AutoQuotesVehicleSelectionDto = {
+  Make: { Id: "BYD0", Name: "BYD" },
+  Model: { Id: 333000010, Name: "Dolphin", SubBody: "(23-)", Year: 0 },
+  Litres: 0,
+  FuelType: "0",
+  ExtraInfo: "44.9kWh",
+  EngineCode: "TZ180XSF",
+  Kw: "70",
+  Tuning: "",
+  Rpm: "?",
+  DinHp: "95",
+  StartYear: "2024",
+  EndYear: "2026",
+  Mid: "BYD50749",
+  VehicleType: "15",
+  TypeAbreviation: "EPC",
+  IsNonStandard: false,
+  IsUnserviceable: false,
+  VehicleTypeDescription: "Electric Cars",
+  VehicleTypeText: "Electric",
+  SortOrder: 1,
+};
+
+export const bydPremiumDto: AutoQuotesVehicleSelectionDto = {
+  ...bydDynamicDto,
+  ExtraInfo: "60.4kWh",
+  EngineCode: "TZ200XSQ",
+  Kw: "150",
+  DinHp: "204",
+  StartYear: "2023",
+  Mid: "BYD50752",
+  SortOrder: 2,
+};
+
+function syntheticVehicle(
+  registration: string,
+  year: number,
+  make: string,
+  model: string,
+  energyType: NonNullable<Vehicle["energyType"]>,
+  details: string,
+): Vehicle {
+  return {
+    id: registration,
+    vehicleId: registration,
+    registration,
+    year,
+    make,
+    model,
+    fuel: energyType === "electric" ? "electric" : "petrol-diesel",
+    energyType,
+    details,
+    demonstration: true,
+    source: "synthetic-lookup",
+    dataProvenance: {
+      identity: "synthetic-demo",
+      technical: "unavailable",
+    },
+  };
+}
+
+const pajeroFixture = normalizeVehicle(
   vehicleLookupDto.Result[0],
-  "1GDU034",
+  "DEMO9",
   "autoquotes-mock",
 );
-export const demoVehicles: Vehicle[] = [
-  demoVehicle,
-  {
-    id: "demo-corolla-2019",
-    year: 2019,
-    make: "Toyota",
-    model: "Corolla",
-    fuel: "petrol-diesel",
-    demonstration: true,
-    source: "synthetic-lookup",
-  },
-  {
-    id: "demo-leaf-2020",
-    year: 2020,
-    make: "Nissan",
-    model: "Leaf",
-    fuel: "electric",
-    demonstration: true,
-    source: "synthetic-lookup",
-  },
+export const demoVehicles: readonly Vehicle[] = [
+  normalizeVehicleSelection(bydDynamicDto, "DEMO1", 2024, "Dynamic"),
+  normalizeVehicleSelection(bydPremiumDto, "DEMO2", 2024, "Premium"),
+  syntheticVehicle(
+    "DEMO3",
+    2022,
+    "Toyota",
+    "RAV4",
+    "hybrid",
+    "Hybrid SUV · technical specifications unavailable in this demo fixture",
+  ),
+  syntheticVehicle(
+    "DEMO4",
+    2021,
+    "Toyota",
+    "Camry",
+    "petrol",
+    "Petrol sedan · technical specifications unavailable in this demo fixture",
+  ),
+  syntheticVehicle(
+    "DEMO5",
+    2023,
+    "Tesla",
+    "Model 3",
+    "electric",
+    "Electric sedan · technical specifications unavailable in this demo fixture",
+  ),
+  syntheticVehicle(
+    "DEMO6",
+    2019,
+    "Ford",
+    "Ranger",
+    "diesel",
+    "Diesel utility · technical specifications unavailable in this demo fixture",
+  ),
+  syntheticVehicle(
+    "DEMO7",
+    2020,
+    "Hyundai",
+    "i30",
+    "petrol",
+    "Petrol passenger car · technical specifications unavailable in this demo fixture",
+  ),
+  syntheticVehicle(
+    "DEMO8",
+    2022,
+    "Mazda",
+    "CX-5",
+    "petrol",
+    "Petrol SUV · technical specifications unavailable in this demo fixture",
+  ),
+  pajeroFixture,
 ];
+export const demoVehicle = demoVehicles[8];
+
+const registrationIndex = new Map(
+  demoVehicles.map((vehicle) => [vehicle.registration, vehicle]),
+);
+registrationIndex.set("1GDU034", demoVehicle);
 
 // The supplied task omitted the sample InformationText values. These are
 // provisional demonstration descriptions pending sanitized response samples.
@@ -242,9 +344,9 @@ export function getMockSchedules(mid: string): ServiceSchedule[] {
 }
 export const mockAutoQuotes: AutoQuotesAdapter = {
   async lookupRegistration(registration) {
-    return registration.toUpperCase().replace(/\s|-/g, "") === "1GDU034"
-      ? { status: "found", vehicle: demoVehicle }
-      : { status: "not-found" };
+    const normalized = registration.trim().toUpperCase();
+    const vehicle = registrationIndex.get(normalized);
+    return vehicle ? { status: "found", vehicle } : { status: "not-found" };
   },
   async selectMakeModel(make, model) {
     const vehicle = demoVehicles.find(

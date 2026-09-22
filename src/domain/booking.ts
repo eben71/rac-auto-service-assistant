@@ -43,3 +43,18 @@ export function selectServiceId(
     );
   return item;
 }
+
+export function sameVehicleIdentity(left: Vehicle, right: Vehicle): boolean {
+  if (left.vehicleId && right.vehicleId && left.vehicleId === right.vehicleId)
+    return true;
+  if (left.id === right.id) return true;
+  const sameDescription =
+    left.make.trim().toLowerCase() === right.make.trim().toLowerCase() &&
+    left.model.trim().toLowerCase() === right.model.trim().toLowerCase();
+  if (!sameDescription) return false;
+  const leftYear = left.customerDetails?.year ?? left.year;
+  const rightYear = right.customerDetails?.year ?? right.year;
+  return (
+    leftYear === undefined || rightYear === undefined || leftYear === rightYear
+  );
+}
