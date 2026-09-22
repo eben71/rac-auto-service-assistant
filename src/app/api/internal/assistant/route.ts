@@ -13,7 +13,19 @@ const requestSchema = z.object({
     .min(1)
     .max(20),
   vehicleId: z.string().trim().min(1).max(200).optional(),
-  catalogueIds: z.array(z.string().trim().min(1).max(200)).max(100),
+  catalogue: z
+    .array(
+      z.object({
+        id: z.string().trim().min(1).max(200),
+        name: z.string().trim().min(1).max(200),
+        description: z.string().trim().max(2_000),
+        category: z.enum(["main", "additional"]),
+        evOnly: z.boolean().optional(),
+        isActive: z.boolean().optional(),
+        availableOnline: z.boolean().optional(),
+      }),
+    )
+    .max(100),
 });
 
 export async function POST(request: Request) {

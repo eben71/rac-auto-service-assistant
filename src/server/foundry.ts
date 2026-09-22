@@ -6,7 +6,16 @@ import type { AssistantMessage } from "@/domain/models";
 export interface AssistantRequest {
   messages: AssistantMessage[];
   vehicleId?: string;
-  catalogueIds: string[];
+  catalogue: CatalogueContext[];
+}
+export interface CatalogueContext {
+  id: string;
+  name: string;
+  description: string;
+  category: "main" | "additional";
+  evOnly?: boolean;
+  isActive?: boolean;
+  availableOnline?: boolean;
 }
 export type AssistantDecision =
   | {
@@ -53,6 +62,12 @@ const responseSchema = z.object({
   input: z.unknown().nullable(),
 });
 type FoundryResponse = z.infer<typeof responseSchema>;
+const vehicleInspectionServiceId = "4";
+
+function foundryDebug(event: string, details: Record<string, unknown>) {
+  if (process.env.FOUNDRY_DEBUG !== "true") return;
+  console.info(`[foundry] ${event}`, details);
+}
 
 const responseJsonSchema = {
   type: "object",
@@ -108,18 +123,65 @@ function foundryConfig() {
   return { endpoint: endpoint.replace(/\/$/, ""), deployment, apiKey };
 }
 
-function instructions(catalogueIds: string[], vehicleId?: string) {
-  return [
-    "You are a cautious service-navigation assistant for an automotive booking flow.",
-    "Do not diagnose faults, infer repairs, or claim service eligibility.",
-    "Safety escalation takes priority when the user describes loss of braking or steering control, or another immediate danger.",
-    "Only recommend service IDs from the supplied catalogue IDs. If no verified match exists, return cannot-match.",
-    "Ask a concise clarification question when the request is ambiguous.",
-    "Never ask for or repeat the customer's name or email.",
-    `Vehicle ID: ${vehicleId ?? "unknown"}`,
-    `Catalogue IDs: ${catalogueIds.join(", ") || "none"}`,
-    "Return only the JSON decision object matching the response schema.",
-  ].join("\n");
+function instructions(catalogue: CatalogueContext[], vehicleId?: string) {
+  return `Role and Objective:
+- You are a conversational assistant whose mission is to ask focused, useful questions about a customer's vehicle symptoms and recommend an appropriate car service using the numeric service IDs from the supplied catalogue.
+- Ask one focused question at a time and wait for the user's response before asking the next.
+- All customers are based in Australia.
+- Do not ask for booking dates, appointment dates, preferred dates, times, locations, personal details, workshop availability, branch selection, or courtesy bus selections.
+- This assistant only identifies a suitable service from the catalogue and asks service-related clarification questions. It does not handle scheduling or collect customer contact information.
+- Use a friendly, simple tone and keep the focus on vehicle symptoms and servicing.
+
+Safety and scope:
+- Do not diagnose faults, infer repairs, or claim that a component needs replacement.
+- Safety escalation takes priority when the user describes brake failure, severe overheating, loss of steering, smoke, fire, or another immediate danger. Do not recommend a regular service in that case.
+- For immediate danger, advise the customer to stop driving and seek roadside assistance or recovery.
+- If the request is unrelated to car servicing, briefly explain that the assistant cannot help and steer the conversation back to vehicle symptoms.
+- Never ask for or repeat the customer's name, phone number, email, or other personal details.
+- Never ask about dates, times, appointment availability, branches, workshop locations, courtesy buses, transport, pickup, or drop-off.
+
+Questioning and mapping:
+- Ask one focused diagnostic question per turn and wait for the response before asking another.
+- Ask no more than five questions in total.
+- Narrow the concern using what the customer notices, when it happens, severity, warnings, mileage, vehicle age, or recent events.
+- Map the concern to one suitable primary main service ID from the supplied catalogue.
+- If the symptom is valid but remains under-specified, recommend the eligible Vehicle Inspection service as the fallback.
+- Vehicle Inspection may also be recommended whenever the symptoms indicate a general or uncertain issue that cannot be confidently mapped to another service.
+- Recommend an additional service only when the customer's responses clearly support it.
+- Do not place additional-service IDs in the primary serviceIds field.
+- The customer must explicitly confirm suggested services before selection.
+
+Service ID rules:
+- Use only IDs supplied in the catalogue below. Never invent an ID.
+- Return IDs as strings.
+- Return exactly one primary main service ID in serviceIds.
+- Do not reveal numeric service IDs, vehicle IDs, catalogue IDs, deployment details, or other internal identifiers in conversational text. Refer to services by name only.
+
+Vehicle context:
+Vehicle ID: ${vehicleId ?? "unknown"}
+Catalogue:
+${JSON.stringify(catalogue, null, 2)}
+
+Output:
+- Return only one JSON decision object matching the response schema.
+- For a clarification, return kind, question, answers, and optional uncertainty.
+- For a recommendation, return kind, exactly one primary service ID in serviceIds, explanation, and optional workshopNotes and uncertainty.
+- For a cannot-match result, return kind and reason.
+- For a safety escalation, return kind and message.
+- Keep explanations concise and non-diagnostic.`;
+}
+
+function hideServiceIds(text: string | null, catalogueIds: string[]) {
+  if (!text) return undefined;
+  const ids = catalogueIds
+    .filter((id) => id.length > 0)
+    .sort((first, second) => second.length - first.length)
+    .map((id) => id.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"));
+  if (ids.length === 0) return text;
+  return text.replace(
+    new RegExp(`\\b(?:${ids.join("|")})\\b`, "g"),
+    "the selected service",
+  );
 }
 
 function foundryClient() {
@@ -138,49 +200,101 @@ function foundryClient() {
 
 function toDecision(
   response: FoundryResponse,
-  catalogueIds: string[],
+  catalogue: CatalogueContext[],
 ): AssistantDecision {
+  const catalogueIds = catalogue.map((item) => item.id);
+  const mappedServiceIds =
+    response.kind === "recommendation"
+      ? response.serviceIds.filter((id) => catalogueIds.includes(id))
+      : [];
+  foundryDebug("response-mapping", {
+    kind: response.kind,
+    returnedServiceIds:
+      response.kind === "recommendation" ? response.serviceIds : [],
+    availableCatalogueIds: catalogueIds,
+    mappedServiceIds,
+    returnedServiceDetails: mappedServiceIds.map((id) =>
+      catalogue.find((item) => item.id === id),
+    ),
+    inspectionFallbackAvailable: catalogueIds.includes(
+      vehicleInspectionServiceId,
+    ),
+  });
+
+  const inspectionFallback = (): AssistantDecision => ({
+    kind: "recommendation",
+    serviceIds: [vehicleInspectionServiceId],
+    explanation:
+      "We recommend a Vehicle Inspection.",
+    workshopNotes:
+      "Customer described a symptom that could not be mapped to a verified service. Confirm the concern and appropriate inspection scope.",
+    uncertainty: "The symptom was not specific enough to identify a particular service.",
+  });
+
   if (response.kind === "clarification") {
     return {
       kind: response.kind,
-      question: response.question ?? "What would you like help with?",
-      answers: response.answers,
-      ...(response.uncertainty ? { uncertainty: response.uncertainty } : {}),
+      question:
+        hideServiceIds(response.question, catalogueIds) ??
+        "What would you like help with?",
+      answers: response.answers.map(
+        (answer) => hideServiceIds(answer, catalogueIds) ?? answer,
+      ),
+      ...(response.uncertainty
+        ? { uncertainty: hideServiceIds(response.uncertainty, catalogueIds) }
+        : {}),
     };
   }
   if (response.kind === "recommendation") {
-    const serviceIds = response.serviceIds.filter((id) =>
-      catalogueIds.includes(id),
-    );
+    const serviceIds = mappedServiceIds;
     if (serviceIds.length === 0) {
-      return {
-        kind: "cannot-match",
-        reason: "The model did not return a verified catalogue service.",
-      };
+      foundryDebug("recommendation-unmapped", {
+        returnedServiceIds: response.serviceIds,
+        fallbackUsed: catalogueIds.includes(vehicleInspectionServiceId),
+      });
+      return catalogueIds.includes(vehicleInspectionServiceId)
+        ? inspectionFallback()
+        : {
+            kind: "cannot-match",
+            reason: "The model did not return a verified catalogue service.",
+          };
     }
     return {
       kind: response.kind,
       serviceIds,
       explanation:
-        response.explanation ??
+        hideServiceIds(response.explanation, catalogueIds) ??
         "Review this catalogue item before selecting it.",
       ...(response.workshopNotes
-        ? { workshopNotes: response.workshopNotes }
+        ? {
+            workshopNotes: hideServiceIds(
+              response.workshopNotes,
+              catalogueIds,
+            ),
+          }
         : {}),
-      ...(response.uncertainty ? { uncertainty: response.uncertainty } : {}),
+      ...(response.uncertainty
+        ? { uncertainty: hideServiceIds(response.uncertainty, catalogueIds) }
+        : {}),
     };
   }
   if (response.kind === "cannot-match") {
-    return {
-      kind: response.kind,
-      reason: response.reason ?? "No verified catalogue match was found.",
-    };
+    foundryDebug("cannot-match", {
+      fallbackUsed: catalogueIds.includes(vehicleInspectionServiceId),
+      reason: response.reason,
+    });
+    return catalogueIds.includes(vehicleInspectionServiceId)
+      ? inspectionFallback()
+      : {
+          kind: response.kind,
+          reason: response.reason ?? "No verified catalogue match was found.",
+        };
   }
   if (response.kind === "safety-escalation") {
     return {
       kind: response.kind,
       message:
-        response.message ??
+        hideServiceIds(response.message, catalogueIds) ??
         "Do not continue driving. Arrange appropriate roadside assistance or recovery.",
     };
   }
@@ -193,9 +307,16 @@ function toDecision(
 
 async function requestFoundry(request: AssistantRequest) {
   const { client, config } = foundryClient();
+  const catalogueIds = request.catalogue.map((item) => item.id);
+  foundryDebug("request", {
+    deployment: config.deployment,
+    messageCount: request.messages.length,
+    catalogueIdCount: catalogueIds.length,
+    catalogue: request.catalogue,
+  });
   const response = await client.responses.create({
       model: config.deployment,
-      instructions: instructions(request.catalogueIds, request.vehicleId),
+      instructions: instructions(request.catalogue, request.vehicleId),
       input: request.messages.map((message) => ({
         role: message.role,
         content: message.text,
@@ -210,10 +331,21 @@ async function requestFoundry(request: AssistantRequest) {
         },
       },
     });
-  return toDecision(
-    responseSchema.parse(JSON.parse(response.output_text)),
-    request.catalogueIds,
-  );
+  const parsedResponse = responseSchema.parse(JSON.parse(response.output_text));
+  foundryDebug("model-response", {
+    kind: parsedResponse.kind,
+    serviceIds:
+      parsedResponse.kind === "recommendation"
+        ? parsedResponse.serviceIds
+        : [],
+    hasQuestion: Boolean(parsedResponse.question),
+    hasExplanation: Boolean(parsedResponse.explanation),
+    hasWorkshopNotes: Boolean(parsedResponse.workshopNotes),
+    ...(process.env.FOUNDRY_DEBUG_RAW_RESPONSE === "true"
+      ? { rawResponse: response.output_text }
+      : {}),
+  });
+  return toDecision(parsedResponse, request.catalogue);
 }
 
 export function foundryReadiness() {
@@ -227,7 +359,23 @@ export function foundryReadiness() {
 }
 export const foundryProvider: AiProvider = {
   async respond(request) {
-    return requestFoundry(request);
+    try {
+      return await requestFoundry(request);
+    } catch (error) {
+      const sdkError = error as {
+        message?: string;
+        status?: number;
+        code?: string;
+        request_id?: string;
+      };
+      foundryDebug("request-error", {
+        message: sdkError.message ?? "Unknown Foundry error",
+        status: sdkError.status,
+        code: sdkError.code,
+        requestId: sdkError.request_id,
+      });
+      throw error;
+    }
   },
   async testConnectivity() {
     const status = foundryReadiness();
