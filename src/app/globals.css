@@ -1003,6 +1003,8 @@ textarea.input {
 .review-block h2 {
   margin: 0 0 12px;
   font-size: 20px;
+  color: #425563;
+  font-weight: 700;
 }
 .review-block p,
 .review-block li {
@@ -1014,7 +1016,9 @@ textarea.input {
   margin: 0;
 }
 .review-block ul {
-  padding-left: 23px;
+  text-align: left;
+  list-style: disc;
+  padding-left: 22px;
 }
 .review-block li + li {
   margin-top: 7px;
