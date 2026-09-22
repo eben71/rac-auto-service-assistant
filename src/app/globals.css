@@ -1003,11 +1003,14 @@ textarea.input {
 .review-block h2 {
   margin: 0 0 12px;
   font-size: 20px;
+  color: #425563;
+  font-weight: 700;
 }
 .review-block p,
 .review-block li {
   font-size: 17px;
   line-height: 1.5;
+  text-align: left;
 }
 .review-block p,
 .review-block ul {
