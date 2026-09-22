@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { AssistantState, ServiceItem, Vehicle } from "@/domain/models";
 import { assistantDecisionSchema } from "@/domain/schemas";
 import { selectable } from "@/domain/booking";
-import { PrimaryButton, TextButton } from "./booking-ui";
+import { PrimaryButton, Spinner, TextButton } from "./booking-ui";
 
 interface ServiceAssistantProps {
   state: AssistantState;
@@ -34,6 +34,9 @@ export function ServiceAssistant({
   const [description, setDescription] = useState("");
   const [followup, setFollowup] = useState("");
   const [pending, setPending] = useState(false);
+  const [pendingSource, setPendingSource] = useState<"submit" | "other" | null>(
+    null,
+  );
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
@@ -126,11 +129,13 @@ export function ServiceAssistant({
       });
     } finally {
       setPending(false);
+      setPendingSource(null);
     }
   }
 
-  function start(text: string) {
+  function start(text: string, source: "submit" | "other" = "other") {
     if (!text.trim()) return;
+    setPendingSource(source);
     void ask([{ role: "user", text: text.trim() }]);
     setDescription("");
     setFollowup("");
@@ -139,6 +144,7 @@ export function ServiceAssistant({
 
   function answer(text: string) {
     if (!text.trim() || state.kind === "idle") return;
+    setPendingSource("other");
     void ask([
       ...state.messages,
       { role: "user", text: text.trim() },
@@ -190,8 +196,15 @@ export function ServiceAssistant({
         />
       </label>
       <div className="assistant-actions">
-        <PrimaryButton onClick={() => start(description)} disabled={pending}>
-          Help me find a service
+        <PrimaryButton
+          onClick={() => start(description, "submit")}
+          disabled={pending}
+        >
+          {pending && pendingSource === "submit" ? (
+            <Spinner label="Finding a service" />
+          ) : (
+            "Help me find a service"
+          )}
         </PrimaryButton>
         {state.kind !== "idle" && !expanded && (
           <TextButton onClick={() => onExpandedChange(true)}>
@@ -224,6 +237,14 @@ export function ServiceAssistant({
               <p>{message.text}</p>
             </div>
           ))}
+          {pending && (
+            <div className="message assistant thinking" role="status">
+              <Spinner label="Waiting for response" size="lg" />
+              <span className="message-label">
+                Service help · demo is thinking…
+              </span>
+            </div>
+          )}
           {state.kind === "clarification" && (
             <div className="clarification">
               <p className="clarification-label">Choose an answer</p>
