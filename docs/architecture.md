@@ -20,7 +20,7 @@ Selecting a different vehicle clears main/additional services, schedule choice, 
 
 Switching between registration and make/model lookup is treated as an explicit vehicle change: the active vehicle and vehicle-specific context are cleared before the newly selected lookup form is shown. Vehicle and service prompts use the guest first name with an initial capital when available, otherwise the similarly normalized first segment of the signed-in profile display name.
 
-The active draft, step, assistant state and service-selection mode are validated and stored in tab-scoped `sessionStorage`. Refresh restores the active booking, leaves lookup results idle, reloads catalogue/image context and reconciles DEMO registrations against the current mock registry. The server session cookie independently restores the current developer. This is prototype persistence, not a durable or cross-device customer record.
+The active draft, step, assistant state and service-selection mode are validated and stored in tab-scoped `sessionStorage`. Only an actual browser refresh restores the active booking; a fresh navigation to the app clears that draft and starts a new booking. Refresh leaves lookup results idle, reloads catalogue/image context and reconciles DEMO registrations against the current mock registry. The server session cookie independently restores the current developer. This is prototype persistence, not a durable or cross-device customer record.
 
 ## Developer profiles
 

@@ -177,9 +177,19 @@ export function BookingJourney() {
   }
 
   useEffect(() => {
-    const persisted = parseBookingSession(
-      window.sessionStorage.getItem(bookingStorageKey) ?? "",
-    );
+    const navigation = performance.getEntriesByType(
+      "navigation",
+    )[0] as PerformanceNavigationTiming | undefined;
+    const persisted =
+      navigation?.type === "reload"
+        ? parseBookingSession(
+            window.sessionStorage.getItem(bookingStorageKey) ?? "",
+          )
+        : null;
+
+    if (!persisted) {
+      window.sessionStorage.removeItem(bookingStorageKey);
+    }
     queueMicrotask(() => {
       if (persisted) {
         setDraft(persisted.draft);
